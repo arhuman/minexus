@@ -44,14 +44,19 @@ func setupLogger(debug bool) (*zap.Logger, zap.AtomicLevel, error) {
 
 // setupGRPCConnection establishes connection to the server
 func setupGRPCConnection(serverAddr string, connectTimeout time.Duration) (*grpc.ClientConn, error) {
-	return grpc.Dial(serverAddr,
+	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+	defer cancel()
+
+	return grpc.DialContext(ctx, serverAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithBlock(),
-		grpc.WithTimeout(connectTimeout),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                20 * time.Second, // Send pings every 20 seconds
-			Timeout:             10 * time.Second, // Wait 10 seconds for ping ack before considering the connection dead
+			Time:                60 * time.Second, // Send pings every 60 seconds
+			Timeout:             20 * time.Second, // Wait 20 seconds for ping ack
 			PermitWithoutStream: true,             // Allow pings even without active streams
+		}),
+		grpc.WithBackoffConfig(grpc.BackoffConfig{
+			MaxDelay: 5 * time.Second,
 		}),
 	)
 }

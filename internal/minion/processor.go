@@ -191,10 +191,18 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 			logger.Debug("Context cancelled, stopping command loop")
 			return ctx.Err()
 		case result := <-recvCh:
+			if result.command == nil && result.err == nil {
+				logger.Debug("Received command from stream",
+					zap.String("command_id", result.command.Id),
+					zap.String("payload", result.command.Payload),
+					zap.String("command_type", result.command.Type.String()))
+			} else {
+				logger.Debug("Received command with error")
+			}
 			command = result.command
 			err = result.err
-		case <-time.After(30 * time.Second):
-			logger.Debug("stream.Recv() timeout after 30s, checking stream health")
+		case <-time.After(90 * time.Second):
+			logger.Debug("stream.Recv() timeout after 90s, checking stream health")
 			// Don't immediately disconnect - try a quick health check first
 			select {
 			case <-ctx.Done():

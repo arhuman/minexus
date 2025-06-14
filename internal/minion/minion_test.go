@@ -496,10 +496,31 @@ func TestGetHostname(t *testing.T) {
 	}
 }
 
+// mockConnectionManager implements ConnectionManager interface for testing
+type mockConnectionManager struct {
+	connected bool
+}
+
+func (m *mockConnectionManager) Connect(ctx context.Context) error { return nil }
+func (m *mockConnectionManager) Disconnect() error                 { return nil }
+func (m *mockConnectionManager) IsConnected() bool                 { return m.connected }
+func (m *mockConnectionManager) Stream() (pb.MinionService_GetCommandsClient, error) {
+	return nil, nil
+}
+func (m *mockConnectionManager) HandleReconnection(ctx context.Context) error { return nil }
+
 func TestGetIPAddress(t *testing.T) {
-	ip := getIPAddress()
-	if ip != "127.0.0.1" {
-		t.Errorf("Expected IP '127.0.0.1', got '%s'", ip)
+	logger := zap.NewNop()
+	mockClient := &mockMinionServiceClient{}
+	mockConn := &mockConnectionManager{connected: true}
+	rm := NewRegistrationManager("test-id", mockClient, mockConn, logger)
+
+	ip := rm.getIPAddress()
+	if ip == "unknown" {
+		t.Error("Expected valid IP address, got 'unknown'")
+	}
+	if ip == "" {
+		t.Error("Expected non-empty IP address")
 	}
 }
 

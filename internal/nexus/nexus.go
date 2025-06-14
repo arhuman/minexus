@@ -17,7 +17,6 @@ import (
 
 	_ "github.com/lib/pq"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -172,7 +171,7 @@ func GetMinionIDFromContext(ctx context.Context) string {
 // GetCommands implements the server-side streaming RPC for the MinionService.
 // Minions call this method to receive commands from the Nexus server.
 // The server streams commands to the requesting minion through the provided stream.
-func (s *Server) GetCommands(empty *pb.Empty, stream grpc.ServerStreamingServer[pb.Command]) error {
+func (s *Server) GetCommands(empty *pb.Empty, stream pb.MinionService_GetCommandsServer) error {
 
 	logger, start := logging.FuncLogger(s.logger, "nexus.Server.GetCommands")
 	defer logging.FuncExit(logger, start)

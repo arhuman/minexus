@@ -41,7 +41,7 @@ func NewMinion(id string, service pb.MinionServiceClient, heartbeatInterval time
 	connectionMgr := NewConnectionManager(id, service, reconnectMgr, logger)
 	commandProcessor := NewCommandProcessor(id, registry, &atom, service, logger)
 	resultSender := NewResultSender(service, logger)
-	registrationMgr := NewRegistrationManager(id, service, logger)
+	registrationMgr := NewRegistrationManager(id, service, connectionMgr, logger)
 
 	return &Minion{
 		id:                id,
