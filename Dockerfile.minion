@@ -1,0 +1,51 @@
+# Multi-stage Dockerfile for Minion client
+FROM golang:1.23 AS builder
+
+# Setup the working directory
+WORKDIR /app
+
+# Install dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Add source code
+COPY cmd/ cmd/
+COPY internal/ internal/
+COPY protogen/ protogen/
+
+# Build the minion binary
+RUN CGO_ENABLED=0 GOOS=linux GOFLAGS="-ldflags=-s -ldflags=-w" go build -o minion ./cmd/minion/
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+ENV TZ=Europe/Zurich
+
+# Add ca-certificates and basic tools
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create user and group
+RUN groupadd dop && \
+    useradd -r --uid 1001 -g dop dop
+
+# Set working directory
+RUN mkdir -p /app
+WORKDIR /app
+
+# Copy the binary from builder
+COPY --from=builder /app/minion /app/minion
+
+# Create entrypoint script
+RUN echo '#!/bin/sh\n/app/minion' > /app/docker-entrypoint.sh && \
+    chmod +x /app/docker-entrypoint.sh
+
+# Set ownership for Kubernetes compatibility
+RUN chgrp -R 0 /app && chmod -R g=u /app
+
+# Switch to non-root user
+USER 1001
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

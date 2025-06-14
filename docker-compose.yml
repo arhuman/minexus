@@ -1,0 +1,102 @@
+services:
+  nexus_db:
+    image: postgres:14
+    container_name: nexus_db
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${DBUSER}
+      - POSTGRES_PASSWORD=${DBPASS}
+      - POSTGRES_DB=${DBNAME}
+    ports:
+      - 5432:5432
+    volumes:
+      - ./config/docker/initdb:/docker-entrypoint-initdb.d
+      - ${FILEROOT}/minexus/db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 2s
+      timeout: 1s
+      retries: 6
+    networks:
+      - default
+
+  # Nexus server - depends on database being healthy
+  nexus:
+    build:
+      context: .
+      dockerfile: Dockerfile.nexus
+    container_name: nexus_server
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - DEBUG=${DEBUG:-false}
+      - NEXUS_PORT=${NEXUS_PORT:-11972}
+      - DBHOST=nexus_db
+      - DBPORT=${DBPORT:-5432}
+      - DBUSER=${DBUSER}
+      - DBPASS=${DBPASS}
+      - DBNAME=${DBNAME}
+    ports:
+      - "${NEXUS_PORT:-11972}:${NEXUS_PORT:-11972}"
+    depends_on:
+      nexus_db:
+        condition: service_healthy
+    networks:
+      - default
+    healthcheck:
+     test: ["CMD-SHELL", "nc -z nexus ${NEXUS_PORT:-11972} || exit 1"]
+     interval: 2s  # More frequent checks
+     timeout: 1s   # Faster timeout
+     retries: 3    # Fewer retries
+
+  # Minion client - depends on nexus server being healthy
+  minion:
+    build:
+      context: .
+      dockerfile: Dockerfile.minion
+    container_name: minion_1
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - DEBUG=${DEBUG:-false}
+      - MINION_ID=${MINION_ID:-minion-docker-01}
+      - NEXUS_SERVER=nexus:${NEXUS_PORT:-11972}
+      - HEARTBEAT_INTERVAL=${HEARTBEAT_INTERVAL:-60}
+      - INITIAL_RECONNECT_DELAY=${INITIAL_RECONNECT_DELAY:-1}
+      - MAX_RECONNECT_DELAY=${MAX_RECONNECT_DELAY:-3600}
+      - CONNECT_TIMEOUT=${CONNECT_TIMEOUT:-3}
+    depends_on:
+      nexus:
+        condition: service_healthy
+    networks:
+      - default
+
+  # Console client - depends on nexus server being healthy
+  console:
+    build:
+      context: .
+      dockerfile: Dockerfile.console
+    container_name: minexus_console
+    env_file:
+      - .env
+    environment:
+      - DEBUG=${DEBUG:-false}
+      - NEXUS_SERVER=nexus:${NEXUS_PORT:-11972}
+      - CONNECT_TIMEOUT=${CONNECT_TIMEOUT:-3}
+    depends_on:
+      nexus:
+        condition: service_healthy
+    networks:
+      - default
+    stdin_open: true
+    tty: true
+    profiles:
+      - console
+
+networks:
+  default:
+    driver: bridge

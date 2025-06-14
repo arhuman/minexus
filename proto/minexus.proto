@@ -1,0 +1,177 @@
+syntax = "proto3";
+
+package minexus;
+
+option go_package = "minexus/proto;proto";
+
+// -------------------------------------
+// ENUMS
+// -------------------------------------
+
+enum CommandType {
+  SYSTEM = 0;
+  INTERNAL = 1;
+}
+
+// -------------------------------------
+// MESSAGES COMMUNS
+// -------------------------------------
+
+message HostInfo {
+  string id = 1;
+  string hostname = 2;
+  string ip = 3;
+  string os = 4;
+  map<string, string> tags = 5;
+  int64 last_seen = 6;  // Unix timestamp of last registration/communication
+  string hardware_fingerprint = 7;  // Unique hardware identifier
+  RegistrationHistory registration_history = 8;
+  string conflict_status = 9;  // null, "pending", "resolved", "manual_review"
+}
+
+message RegistrationHistory {
+  message Registration {
+    int64 timestamp = 1;
+    string id = 2;
+    string ip = 3;
+    string hostname = 4;
+    string hardware_fingerprint = 5;
+  }
+
+  message Conflict {
+    int64 timestamp = 1;
+    string type = 2;  // "duplicate_id", "duplicate_hostname", "hardware_mismatch"
+    string resolution = 3;  // "auto_reassign", "manual", "pending"
+    map<string, string> details = 4;
+  }
+
+  repeated Registration registrations = 1;
+  repeated Conflict conflicts = 2;
+  int64 first_seen = 3;
+  int32 registration_count = 4;
+}
+
+message Command {
+  string id = 1;
+  CommandType type = 2;
+  string payload = 3;
+  map<string, string> metadata = 4;
+}
+
+message CommandResult {
+  string command_id = 1;
+  string minion_id = 2;
+  int32 exit_code = 3;
+  string stdout = 4;
+  string stderr = 5;
+  int64 timestamp = 6;
+}
+
+message Ack {
+  bool success = 1;
+}
+
+message Empty {}
+
+
+// -------------------------------------
+// TAG MANAGEMENT & SELECTION
+// -------------------------------------
+
+message SetTagsRequest {
+  string minion_id = 1;
+  map<string, string> tags = 2;
+}
+
+message UpdateTagsRequest {
+  string minion_id = 1;
+  map<string, string> add = 2;
+  repeated string remove_keys = 3;
+}
+
+message TagList {
+  repeated string tags = 1;
+}
+
+message TagMatch {
+  string key = 1;
+  oneof condition {
+    string equals = 2;
+    bool exists = 3;
+    bool not_exists = 4;
+  }
+}
+
+message TagSelector {
+  repeated TagMatch rules = 1; // AND logique
+}
+
+// -------------------------------------
+// CONSOLE ↔ NEXUS SERVICE
+// -------------------------------------
+
+service ConsoleService {
+  rpc ListMinions(Empty) returns (MinionList);
+  rpc ListTags(Empty) returns (TagList);
+
+  rpc SetTags(SetTagsRequest) returns (Ack);
+  rpc UpdateTags(UpdateTagsRequest) returns (Ack);
+
+  rpc SendCommand(CommandRequest) returns (CommandDispatchResponse);
+  rpc GetCommandResults(ResultRequest) returns (CommandResults);
+}
+
+message MinionList {
+  repeated HostInfo minions = 1;
+}
+
+message CommandRequest {
+  repeated string minion_ids = 1;
+  TagSelector tag_selector = 2;
+  Command command = 3;
+}
+
+message CommandDispatchResponse {
+  bool accepted = 1;
+  string command_id = 2;
+}
+
+message ResultRequest {
+  string command_id = 1;
+}
+
+message CommandResults {
+  repeated CommandResult results = 1;
+}
+
+// -------------------------------------
+// NEXUS ↔ MINION SERVICE
+// -------------------------------------
+
+// New message for command status updates
+message CommandStatusUpdate {
+  string command_id = 1;
+  string minion_id = 2;
+  string status = 3;     // "RECEIVED", "EXECUTING", "COMPLETED", "FAILED"
+  int64 timestamp = 4;
+}
+
+service MinionService {
+  rpc Register(HostInfo) returns (RegisterResponse);
+  rpc GetCommands(Empty) returns (stream Command);
+  rpc SendCommandResult(CommandResult) returns (Ack);
+  rpc UpdateCommandStatus(CommandStatusUpdate) returns (Ack);
+}
+
+message RegisterResponse {
+  bool success = 1;
+  string assigned_id = 2;
+  string conflict_status = 3;
+  RegistrationHistory registration_history = 4;
+  string error_message = 5;
+  map<string, string> conflict_details = 6;
+}
+
+message MinionInfo {
+  string id = 1;
+}
