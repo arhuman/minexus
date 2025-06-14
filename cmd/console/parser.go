@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	pb "minexus/protogen"
 )
@@ -101,6 +102,7 @@ func (p *CommandParser) ParseCommand(args []string) (*ParsedCommand, error) {
 		result.CommandText = cmdText
 		result.CommandType = cmdType
 		result.Request.Command = &pb.Command{
+			Id:      fmt.Sprintf("cmd-%d", time.Now().UnixNano()),
 			Type:    cmdType,
 			Payload: cmdText,
 		}
@@ -115,6 +117,7 @@ func (p *CommandParser) ParseCommand(args []string) (*ParsedCommand, error) {
 	}
 
 	req.Command = &pb.Command{
+		Id:      fmt.Sprintf("cmd-%d", time.Now().UnixNano()),
 		Type:    cmdType,
 		Payload: cmdText,
 	}
@@ -171,6 +174,7 @@ func (p *CommandParser) parseLegacyCommand(args []string) (*ParsedCommand, error
 	}
 
 	req.Command = &pb.Command{
+		Id:      fmt.Sprintf("cmd-%d", time.Now().UnixNano()),
 		Type:    pb.CommandType_SYSTEM,
 		Payload: cmdText,
 	}

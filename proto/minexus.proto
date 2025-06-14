@@ -119,6 +119,19 @@ service ConsoleService {
 
   rpc SendCommand(CommandRequest) returns (CommandDispatchResponse);
   rpc GetCommandResults(ResultRequest) returns (CommandResults);
+  rpc GetCommandStatus(ResultRequest) returns (CommandStatusResponse);
+}
+
+message CommandStatusResponse {
+  message MinionStatus {
+    string minion_id = 1;
+    string status = 2;     // "PENDING", "RECEIVED", "EXECUTING", "COMPLETED", "FAILED"
+    int64 timestamp = 3;
+  }
+  
+  string command_id = 1;
+  repeated MinionStatus statuses = 2;
+  map<string, int32> status_counts = 3;  // Count of minions in each status
 }
 
 message MinionList {

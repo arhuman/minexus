@@ -18,12 +18,20 @@ import (
 )
 
 // Console represents the interactive console
+// CommandStatus tracks the status of a command for each minion
+type CommandStatus struct {
+	CommandID string
+	Statuses  map[string]string // minion_id -> status
+	Timestamp time.Time
+}
+
 type Console struct {
-	client pb.ConsoleServiceClient
-	grpc   *GRPCClient
-	ui     *UIManager
-	parser *CommandParser
-	logger *zap.Logger
+	client        pb.ConsoleServiceClient
+	grpc          *GRPCClient
+	ui            *UIManager
+	parser        *CommandParser
+	logger        *zap.Logger
+	commandStatus map[string]*CommandStatus // command_id -> status
 }
 
 // NewConsole creates a new console instance
@@ -31,11 +39,12 @@ func NewConsole(grpcClient *GRPCClient, logger *zap.Logger) *Console {
 	registry := command.SetupCommands()
 
 	console := &Console{
-		client: grpcClient.client,
-		grpc:   grpcClient,
-		ui:     NewUIManager(logger, registry),
-		parser: NewCommandParser(),
-		logger: logger,
+		client:        grpcClient.client,
+		grpc:          grpcClient,
+		ui:            NewUIManager(logger, registry),
+		parser:        NewCommandParser(),
+		logger:        logger,
+		commandStatus: make(map[string]*CommandStatus),
 	}
 
 	return console
@@ -102,6 +111,9 @@ func (c *Console) handleCommand(command string, args []string) {
 	switch command {
 	case "help", "h":
 		c.ui.ShowHelp(args)
+
+	case "command-status":
+		c.showCommandStatus(ctx, args)
 
 	case "version", "v":
 		c.ui.ShowVersion()
@@ -200,6 +212,7 @@ func (c *Console) sendCommand(ctx context.Context, args []string) {
 	}
 
 	// Send command
+	fmt.Printf("DEBUG: Sending command request: %+v\n", parsed.Request)
 	response, err := c.grpc.SendCommand(ctx, parsed.Request)
 	if err != nil {
 		c.ui.PrintError(fmt.Sprintf("Error sending command: %v", err))
@@ -207,10 +220,33 @@ func (c *Console) sendCommand(ctx context.Context, args []string) {
 	}
 
 	if response.Accepted {
-		fmt.Printf("Command dispatched successfully. Command ID: %s\n", response.CommandId)
-		fmt.Printf("Use 'result-get %s' to check results\n", response.CommandId)
+		// Initialize command status tracking
+		status := &CommandStatus{
+			CommandID: response.CommandId,
+			Statuses:  make(map[string]string),
+			Timestamp: time.Now(),
+		}
 
-		// HERE Check if command result are available immediately **in database**
+		// Set initial status for targeted minions
+		if len(parsed.Request.MinionIds) > 0 {
+			for _, minionID := range parsed.Request.MinionIds {
+				status.Statuses[minionID] = "PENDING"
+			}
+		} else {
+			// For 'all' target, get list of minions and set pending status
+			minions, err := c.grpc.ListMinions(ctx)
+			if err == nil {
+				for _, minion := range minions.Minions {
+					status.Statuses[minion.Id] = "PENDING"
+				}
+			}
+		}
+
+		c.commandStatus[response.CommandId] = status
+
+		fmt.Printf("Command dispatched successfully. Command ID: %s\n", response.CommandId)
+
+		// Check if command result are available immediately **in database**
 		// if yes returns them immediately
 		// (with a header saying that further results will be available later through result-get)
 		// Check if immediate results are available in database
@@ -239,7 +275,7 @@ func (c *Console) sendCommand(ctx context.Context, args []string) {
 				}
 			}
 		} else {
-			c.ui.PrintInfo("No immediate results available, check later with 'result-get <command-id>'")
+			c.ui.PrintInfo("No immediate results available, check later with 'result-get " + response.CommandId + "'")
 		}
 		// Add command to history
 		resultCmd := fmt.Sprintf("result-get %s", response.CommandId)
@@ -270,6 +306,17 @@ func (c *Console) getResults(ctx context.Context, args []string) {
 	if len(response.Results) == 0 {
 		c.ui.PrintInfo("No results available yet")
 		return
+	}
+
+	// Update command status for received results
+	if status, ok := c.commandStatus[commandID]; ok {
+		for _, result := range response.Results {
+			if result.ExitCode == 0 {
+				status.Statuses[result.MinionId] = "COMPLETED"
+			} else {
+				status.Statuses[result.MinionId] = "FAILED"
+			}
+		}
 	}
 
 	fmt.Printf("Command results (%d):\n", len(response.Results))
@@ -413,6 +460,79 @@ func (c *Console) updateTags(ctx context.Context, args []string) {
 		logger.Warn("Failed to update tags",
 			zap.String("minion_id", minionID))
 		c.ui.PrintError("Failed to update tags")
+	}
+}
+
+// showCommandStatus displays the current status of a command
+func (c *Console) showCommandStatus(ctx context.Context, args []string) {
+	if len(args) == 0 {
+		c.ui.PrintError("Usage: command-status <all | minion <minion-id>>")
+		return
+	}
+
+	// Parse target type
+	switch args[0] {
+	case "all":
+		// Show status for all commands
+		if len(c.commandStatus) == 0 {
+			c.ui.PrintInfo("No commands have been executed")
+			return
+		}
+
+		fmt.Println("Command Status Overview:")
+		fmt.Println("Command ID                            | Pending | Received | Executing | Completed | Failed")
+		fmt.Println("------------------------------------ | -------- | -------- | --------- | --------- | -------")
+
+		for cmdID, status := range c.commandStatus {
+			counts := map[string]int{
+				"PENDING":   0,
+				"RECEIVED":  0,
+				"EXECUTING": 0,
+				"COMPLETED": 0,
+				"FAILED":    0,
+			}
+			for _, st := range status.Statuses {
+				counts[st]++
+			}
+
+			fmt.Printf("%-36s | %-8d | %-8d | %-9d | %-9d | %-7d\n",
+				cmdID,
+				counts["PENDING"],
+				counts["RECEIVED"],
+				counts["EXECUTING"],
+				counts["COMPLETED"],
+				counts["FAILED"])
+		}
+
+	case "minion":
+		if len(args) < 2 {
+			c.ui.PrintError("Usage: command-status minion <minion-id>")
+			return
+		}
+
+		minionID := args[1]
+		found := false
+
+		fmt.Printf("Command status for minion %s:\n", minionID)
+		fmt.Println("Command ID                            | Status    | Timestamp")
+		fmt.Println("------------------------------------ | --------- | ---------")
+
+		for cmdID, status := range c.commandStatus {
+			if st, exists := status.Statuses[minionID]; exists {
+				found = true
+				fmt.Printf("%-36s | %-9s | %s\n",
+					cmdID,
+					st,
+					status.Timestamp.Format("15:04:05"))
+			}
+		}
+
+		if !found {
+			c.ui.PrintInfo("No commands found for this minion")
+		}
+
+	default:
+		c.ui.PrintError("Invalid target type. Use 'all' or 'minion <minion-id>'")
 	}
 }
 
@@ -577,6 +697,8 @@ func handleOfflineCommand(command string, args []string) {
 			fmt.Println("  command-send all <cmd>                     - Send command to all minions")
 			fmt.Println("  command-send minion <id> <cmd>             - Send command to specific minion")
 			fmt.Println("  command-send tag <key>=<value> <cmd>       - Send command to minions with tag")
+			fmt.Println("  command-status all                         - Show status of all commands")
+			fmt.Println("  command-status minion <id>                 - Show status of commands for specific minion")
 			fmt.Println("  result-get <cmd-id>                        - Get results for a command ID")
 			fmt.Println("  tag-set <minion-id> <key>=<value> [...]    - Set tags for a minion (replaces all)")
 			fmt.Println("  tag-update <minion-id> +<key>=<value> -<key> [...] - Update tags for a minion")

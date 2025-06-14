@@ -2,6 +2,7 @@ package minion
 
 import (
 	"context"
+	"net"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -17,16 +18,18 @@ import (
 type registrationManager struct {
 	id                string
 	service           pb.MinionServiceClient
+	connectionMgr     ConnectionManager
 	logger            *zap.Logger
 	fingerprintGen    *fingerprint.Generator
 	registrationCount int32
 }
 
 // NewRegistrationManager creates a new registration manager
-func NewRegistrationManager(id string, service pb.MinionServiceClient, logger *zap.Logger) *registrationManager {
+func NewRegistrationManager(id string, service pb.MinionServiceClient, connMgr ConnectionManager, logger *zap.Logger) *registrationManager {
 	return &registrationManager{
 		id:             id,
 		service:        service,
+		connectionMgr:  connMgr,
 		logger:         logger,
 		fingerprintGen: fingerprint.NewGenerator(logger),
 	}
@@ -163,7 +166,7 @@ func (rm *registrationManager) createHostInfo() (*pb.HostInfo, error) {
 		initialReg := &pb.RegistrationHistory_Registration{
 			Timestamp:           now,
 			Id:                  rm.id,
-			Ip:                  getIPAddress(),
+			Ip:                  rm.getIPAddress(),
 			Hostname:            getHostname(),
 			HardwareFingerprint: hwFingerprint,
 		}
@@ -173,7 +176,7 @@ func (rm *registrationManager) createHostInfo() (*pb.HostInfo, error) {
 	return &pb.HostInfo{
 		Id:                  rm.id,
 		Hostname:            getHostname(),
-		Ip:                  getIPAddress(),
+		Ip:                  rm.getIPAddress(),
 		Os:                  runtime.GOOS,
 		Tags:                make(map[string]string),
 		HardwareFingerprint: hwFingerprint,
@@ -200,8 +203,48 @@ func getHostname() string {
 	return strings.TrimSpace(string(hostname))
 }
 
-func getIPAddress() string {
-	// This is a simplified implementation
-	// In production, you'd want a more robust method
-	return "127.0.0.1"
+// getIPAddress returns the IP address used for connecting to the nexus server.
+// It first tries to get the local address if connected, then falls back to network interface detection.
+func (rm *registrationManager) getIPAddress() string {
+	// Try to get the local address if we're connected
+	if rm.connectionMgr.IsConnected() {
+		// Create a UDP connection to determine the outbound IP
+		conn, err := net.Dial("udp", "8.8.8.8:80")
+		if err == nil {
+			defer conn.Close()
+			if localAddr, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+				if !localAddr.IP.IsLoopback() && localAddr.IP.To4() != nil {
+					rm.logger.Debug("Using IP from active connection", zap.String("ip", localAddr.IP.String()))
+					return localAddr.IP.String()
+				}
+			}
+		}
+	}
+
+	// Fallback to interface detection
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		rm.logger.Error("Failed to get interface addresses", zap.Error(err))
+		return "unknown"
+	}
+
+	// Look for non-loopback IPv4 address
+	for _, addr := range addrs {
+		if addr == nil {
+			continue
+		}
+
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() || ipNet.IP.IsUnspecified() {
+			continue
+		}
+
+		if ip4 := ipNet.IP.To4(); ip4 != nil {
+			rm.logger.Debug("Using IP from network interface", zap.String("ip", ip4.String()))
+			return ip4.String()
+		}
+	}
+
+	rm.logger.Warn("No suitable network interface found")
+	return "unknown"
 }

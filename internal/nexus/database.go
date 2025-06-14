@@ -84,7 +84,15 @@ func (d *DatabaseServiceImpl) StoreHost(ctx context.Context, hostInfo *pb.HostIn
 
 	now := time.Now()
 	_, err = d.db.ExecContext(ctx,
-		"INSERT INTO hosts (id, hostname, ip, os, first_seen, last_seen, tags, hardware_fingerprint) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+		`INSERT INTO hosts (id, hostname, ip, os, first_seen, last_seen, tags, hardware_fingerprint)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (id) DO UPDATE SET
+			hostname = EXCLUDED.hostname,
+			ip = EXCLUDED.ip,
+			os = EXCLUDED.os,
+			last_seen = EXCLUDED.last_seen,
+			tags = EXCLUDED.tags,
+			hardware_fingerprint = EXCLUDED.hardware_fingerprint`,
 		hostInfo.Id, hostInfo.Hostname, hostInfo.Ip, hostInfo.Os, now, now, string(tagsJSON), hostInfo.HardwareFingerprint)
 
 	if err != nil {

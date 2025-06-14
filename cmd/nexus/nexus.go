@@ -76,15 +76,15 @@ func main() {
 		grpc.MaxRecvMsgSize(cfg.MaxMsgSize),
 		grpc.MaxSendMsgSize(cfg.MaxMsgSize),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			MinTime:             10 * time.Second, // Minimum time clients should wait between pings
+			MinTime:             30 * time.Second, // Increased minimum time between pings
 			PermitWithoutStream: true,             // Allow pings even when there are no active streams
 		}),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
-			MaxConnectionIdle:     15 * time.Minute, // Close idle connections after 15 minutes
-			MaxConnectionAge:      30 * time.Minute, // Close connections older than 30 minutes
-			MaxConnectionAgeGrace: 5 * time.Second,  // Grace period for forceful closure
-			Time:                  5 * time.Second,  // Ping interval for checking connection liveness
-			Timeout:               10 * time.Second, // Wait time before closing unresponsive connections
+			MaxConnectionIdle:     30 * time.Minute, // Increased idle timeout
+			MaxConnectionAge:      60 * time.Minute, // Increased max age
+			MaxConnectionAgeGrace: 10 * time.Second, // Increased grace period
+			Time:                  60 * time.Second, // Matches client's ping interval
+			Timeout:               20 * time.Second, // Matches client's timeout
 		}),
 	)
 

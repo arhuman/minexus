@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -48,6 +49,24 @@ func (m *mockConsoleServiceClient) SendCommand(ctx context.Context, req *pb.Comm
 	if m.returnError {
 		return nil, errors.New("mock error")
 	}
+
+	// Verify request structure
+	if req == nil {
+		return &pb.CommandDispatchResponse{Accepted: false}, fmt.Errorf("request is nil")
+	}
+	if req.Command == nil {
+		return &pb.CommandDispatchResponse{Accepted: false}, fmt.Errorf("command is nil")
+	}
+	if req.Command.Id == "" {
+		return &pb.CommandDispatchResponse{Accepted: false}, fmt.Errorf("command ID is empty")
+	}
+	if req.Command.Type != pb.CommandType_SYSTEM {
+		return &pb.CommandDispatchResponse{Accepted: false}, fmt.Errorf("expected command type SYSTEM, got %v", req.Command.Type)
+	}
+	if req.Command.Payload == "" {
+		return &pb.CommandDispatchResponse{Accepted: false}, fmt.Errorf("command payload is empty")
+	}
+
 	return &pb.CommandDispatchResponse{Accepted: m.commandAccepted, CommandId: m.commandId}, nil
 }
 
@@ -94,9 +113,10 @@ func createMockConsole(mockClient *mockConsoleServiceClient) *Console {
 	grpcClient := &GRPCClient{client: mockClient}
 
 	console := &Console{
-		client: mockClient,
-		grpc:   grpcClient,
-		logger: logger,
+		client:        mockClient,
+		grpc:          grpcClient,
+		logger:        logger,
+		commandStatus: make(map[string]*CommandStatus),
 	}
 
 	// Initialize UI and parser manually for testing
@@ -320,8 +340,18 @@ func TestHandleCommand(t *testing.T) {
 		{"minion_list_alias", "lm", []string{}, false},
 		{"tag_list", "tag-list", []string{}, false},
 		{"tag_list_alias", "lt", []string{}, false},
-		{"command_send", "command-send", []string{"all", "echo", "test"}, false},
-		{"command_send_alias", "cmd", []string{"all", "echo", "test"}, false},
+		{
+			name:        "command_send",
+			command:     "command-send",
+			args:        []string{"all", "echo", "test"},
+			expectError: false,
+		},
+		{
+			name:        "command_send_alias",
+			command:     "cmd",
+			args:        []string{"all", "echo", "test"},
+			expectError: false,
+		},
 		{"result_get", "result-get", []string{"cmd-123"}, false},
 		{"result_get_alias", "results", []string{"cmd-123"}, false},
 		{"tag_set", "tag-set", []string{"minion123", "env=test"}, false},
@@ -337,10 +367,21 @@ func TestHandleCommand(t *testing.T) {
 				console.handleCommand(tt.command, tt.args)
 			})
 
-			// Basic validation that no panic occurred and some output was produced
-			if tt.command == "unknown" {
+			// Verify command-specific output
+			switch tt.command {
+			case "unknown":
 				if !strings.Contains(output, "Unknown command") {
 					t.Error("Expected unknown command message")
+				}
+			case "command-send":
+				if !strings.Contains(output, "DEBUG: Sending command request:") {
+					t.Errorf("Expected debug output, got: %s", output)
+				}
+				if !strings.Contains(output, "Command dispatched successfully") {
+					t.Errorf("Expected success message, got: %s", output)
+				}
+				if !strings.Contains(output, "cmd-123") {
+					t.Errorf("Expected command ID in output, got: %s", output)
 				}
 			}
 		})
