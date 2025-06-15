@@ -6,8 +6,10 @@ import (
 	"sync"
 	"time"
 
+	"minexus/internal/logging"
 	pb "minexus/protogen"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -15,10 +17,10 @@ import (
 // MinionConnectionImpl implements the MinionConnection interface.
 // It represents an active connection to a minion node in the system.
 type MinionConnectionImpl struct {
-	Info          *pb.HostInfo     // Host information including ID, hostname, IP, OS, and tags
-	LastSeen      time.Time        // Timestamp of the last communication from this minion
-	CommandCh     chan *pb.Command // Channel for sending commands to this minion
-	NextSeqNumber uint64           // Next sequence number to assign to commands for this minion
+	Info      *pb.HostInfo     // Host information including ID, hostname, IP, OS, and tags
+	LastSeen  time.Time        // Timestamp of the last communication from this minion
+	CommandCh chan *pb.Command // Channel for sending commands to this minion
+	// PHASE 3.2: Removed NextSeqNumber - sequence tracking simplified with streaming
 }
 
 // GetInfo returns the host information for this minion connection.
@@ -32,26 +34,31 @@ type MinionRegistryImpl struct {
 	minions   map[string]*MinionConnectionImpl
 	minionsMu sync.RWMutex
 	dbService *DatabaseServiceImpl
-
-	// Maps for conflict detection
-	fingerprintMap map[string]string // hardware fingerprint -> minion ID
-	hostnameMap    map[string]string // hostname -> minion ID
-	ipMap          map[string]string // ip -> minion ID
+	logger    *zap.Logger
+	// PHASE 3.2: Removed conflict detection maps - simplified connection tracking
 }
 
 // NewMinionRegistry creates a new minion registry instance.
-func NewMinionRegistry(dbService *DatabaseServiceImpl) *MinionRegistryImpl {
+func NewMinionRegistry(dbService *DatabaseServiceImpl, logger *zap.Logger) *MinionRegistryImpl {
 	return &MinionRegistryImpl{
-		minions:        make(map[string]*MinionConnectionImpl),
-		dbService:      dbService,
-		fingerprintMap: make(map[string]string),
-		hostnameMap:    make(map[string]string),
-		ipMap:          make(map[string]string),
+		minions:   make(map[string]*MinionConnectionImpl),
+		dbService: dbService,
+		logger:    logger,
+		// PHASE 3.2: Simplified initialization - removed conflict detection maps
 	}
 }
 
 // Register adds or updates a minion in the registry using host information.
 func (r *MinionRegistryImpl) Register(hostInfo *pb.HostInfo) (*pb.RegisterResponse, error) {
+	logger, start := logging.FuncLogger(r.logger, "MinionRegistryImpl.Register")
+	defer logging.FuncExit(logger, start)
+
+	// PHASE 3.2: Simplified registration with streamlined connection tracking
+	logger.Info("Phase3.2: Registering minion with simplified tracking",
+		zap.String("minion_id", hostInfo.Id),
+		zap.String("hostname", hostInfo.Hostname),
+		zap.Int("current_minions_count", len(r.minions)))
+
 	// Initialize tags if nil
 	if hostInfo.Tags == nil {
 		hostInfo.Tags = make(map[string]string)
@@ -61,109 +68,40 @@ func (r *MinionRegistryImpl) Register(hostInfo *pb.HostInfo) (*pb.RegisterRespon
 	r.minionsMu.Lock()
 	defer r.minionsMu.Unlock()
 
-	// Check for conflicts
-	conflicts := r.detectConflicts(hostInfo)
-	if len(conflicts) > 0 {
-		// Get the existing minion that has the conflict
-		existingID := conflicts["existing_id"]
-		existing := r.minions[existingID]
-
-		// Set conflict status on existing minion
-		existing.Info.ConflictStatus = "pending"
-
-		// Record conflict in history
-		conflict := &pb.RegistrationHistory_Conflict{
-			Timestamp:  time.Now().Unix(),
-			Type:       conflicts["type"],
-			Resolution: "pending",
-			Details:    conflicts,
-		}
-		existing.Info.RegistrationHistory.Conflicts = append(
-			existing.Info.RegistrationHistory.Conflicts,
-			conflict,
-		)
-
-		// Store conflict in database
-		if r.dbService != nil {
-			// Set conflict status on the host info
-			existing.Info.ConflictStatus = "pending"
-			if err := r.dbService.StoreHost(context.Background(), existing.Info); err != nil {
-				return nil, fmt.Errorf("failed to store conflict: %v", err)
-			}
-		}
-
-		return &pb.RegisterResponse{
-			Success:         false,
-			ConflictStatus:  "pending",
-			ConflictDetails: conflicts,
-			ErrorMessage:    "Registration conflicts detected",
-		}, nil
-	}
-
 	// Check if minion already exists to preserve existing channel
 	if existing, exists := r.minions[hostInfo.Id]; exists {
-		// Update registration history
-		registration := &pb.RegistrationHistory_Registration{
-			Timestamp:           time.Now().Unix(),
-			Id:                  hostInfo.Id,
-			Ip:                  hostInfo.Ip,
-			Hostname:            hostInfo.Hostname,
-			HardwareFingerprint: hostInfo.HardwareFingerprint,
-		}
-		existing.Info.RegistrationHistory.Registrations = append(
-			existing.Info.RegistrationHistory.Registrations,
-			registration,
-		)
-		existing.Info.RegistrationHistory.RegistrationCount++
+		logger.Info("Phase3.2: Updating existing minion registration",
+			zap.String("minion_id", hostInfo.Id),
+			zap.Int("command_channel_buffer", len(existing.CommandCh)))
 
 		// Update existing connection but preserve the command channel
 		existing.Info = hostInfo
 		existing.LastSeen = time.Now()
 
-		// Update maps
-		r.updateMaps(hostInfo)
-
 		// Update database if available
 		if r.dbService != nil {
 			if err := r.dbService.UpdateHost(context.Background(), hostInfo); err != nil {
+				logger.Error("Failed to update host in database", zap.Error(err))
 				return nil, err
 			}
 		}
 
 		return &pb.RegisterResponse{
-			Success:             true,
-			AssignedId:          hostInfo.Id,
-			RegistrationHistory: existing.Info.RegistrationHistory,
+			Success:    true,
+			AssignedId: hostInfo.Id,
 		}, nil
 	}
 
-	// Create new connection
-	now := time.Now().Unix()
-	regHistory := &pb.RegistrationHistory{
-		Registrations: []*pb.RegistrationHistory_Registration{
-			{
-				Timestamp:           now,
-				Id:                  hostInfo.Id,
-				Ip:                  hostInfo.Ip,
-				Hostname:            hostInfo.Hostname,
-				HardwareFingerprint: hostInfo.HardwareFingerprint,
-			},
-		},
-		Conflicts:         make([]*pb.RegistrationHistory_Conflict, 0),
-		FirstSeen:         now,
-		RegistrationCount: 1,
-	}
+	// Create new connection with simplified structure
+	logger.Info("Phase3.2: Creating new minion connection",
+		zap.String("minion_id", hostInfo.Id))
 
-	hostInfo.RegistrationHistory = regHistory
 	r.minions[hostInfo.Id] = &MinionConnectionImpl{
-		Info:          hostInfo,
-		LastSeen:      time.Now(),
-		CommandCh:     make(chan *pb.Command, 100),
-		NextSeqNumber: 1,
+		Info:      hostInfo,
+		LastSeen:  time.Now(),
+		CommandCh: make(chan *pb.Command, 100),
+		// PHASE 3.2: No sequence number tracking needed with streaming
 	}
-
-	// Update maps
-	r.updateMaps(hostInfo)
 
 	// Store in database if available
 	if r.dbService != nil {
@@ -173,50 +111,12 @@ func (r *MinionRegistryImpl) Register(hostInfo *pb.HostInfo) (*pb.RegisterRespon
 	}
 
 	return &pb.RegisterResponse{
-		Success:             true,
-		AssignedId:          hostInfo.Id,
-		RegistrationHistory: regHistory,
+		Success:    true,
+		AssignedId: hostInfo.Id,
 	}, nil
 }
 
-// detectConflicts checks for any conflicts with existing registrations
-func (r *MinionRegistryImpl) detectConflicts(hostInfo *pb.HostInfo) map[string]string {
-	conflicts := make(map[string]string)
-
-	// Check hardware fingerprint conflicts
-	if existingID, exists := r.fingerprintMap[hostInfo.HardwareFingerprint]; exists && existingID != hostInfo.Id {
-		conflicts["type"] = "hardware_mismatch"
-		conflicts["existing_id"] = existingID
-		conflicts["hardware_fingerprint"] = hostInfo.HardwareFingerprint
-	}
-
-	// Check hostname conflicts
-	if existingID, exists := r.hostnameMap[hostInfo.Hostname]; exists && existingID != hostInfo.Id {
-		if len(conflicts) == 0 {
-			conflicts["type"] = "duplicate_hostname"
-		}
-		conflicts["existing_hostname_id"] = existingID
-		conflicts["hostname"] = hostInfo.Hostname
-	}
-
-	// Check IP conflicts
-	if existingID, exists := r.ipMap[hostInfo.Ip]; exists && existingID != hostInfo.Id {
-		if len(conflicts) == 0 {
-			conflicts["type"] = "duplicate_ip"
-		}
-		conflicts["existing_ip_id"] = existingID
-		conflicts["ip"] = hostInfo.Ip
-	}
-
-	return conflicts
-}
-
-// updateMaps updates the mapping tables used for conflict detection
-func (r *MinionRegistryImpl) updateMaps(hostInfo *pb.HostInfo) {
-	r.fingerprintMap[hostInfo.HardwareFingerprint] = hostInfo.Id
-	r.hostnameMap[hostInfo.Hostname] = hostInfo.Id
-	r.ipMap[hostInfo.Ip] = hostInfo.Id
-}
+// PHASE 3.2: Removed detectConflicts and updateMaps methods - conflict detection simplified
 
 // GetConnection retrieves the connection information for a specific minion.
 func (r *MinionRegistryImpl) GetConnection(minionID string) (MinionConnection, bool) {
@@ -263,15 +163,12 @@ func (r *MinionRegistryImpl) ListMinions() []*pb.HostInfo {
 	for _, conn := range r.minions {
 		// Create a copy of the HostInfo to avoid modifying the original
 		hostInfo := &pb.HostInfo{
-			Id:                  conn.Info.Id,
-			Hostname:            conn.Info.Hostname,
-			Ip:                  conn.Info.Ip,
-			Os:                  conn.Info.Os,
-			LastSeen:            conn.LastSeen.Unix(),
-			Tags:                make(map[string]string),
-			HardwareFingerprint: conn.Info.HardwareFingerprint,
-			RegistrationHistory: conn.Info.RegistrationHistory,
-			ConflictStatus:      conn.Info.ConflictStatus,
+			Id:       conn.Info.Id,
+			Hostname: conn.Info.Hostname,
+			Ip:       conn.Info.Ip,
+			Os:       conn.Info.Os,
+			LastSeen: conn.LastSeen.Unix(),
+			Tags:     make(map[string]string),
 		}
 
 		// Copy tags to avoid modification of original
@@ -354,14 +251,11 @@ func (r *MinionRegistryImpl) UpdateTags(minionID string, add map[string]string, 
 
 	// Create a deep copy of the host info to avoid modifying the original
 	updatedInfo := &pb.HostInfo{
-		Id:                  conn.Info.Id,
-		Hostname:            conn.Info.Hostname,
-		Ip:                  conn.Info.Ip,
-		Os:                  conn.Info.Os,
-		Tags:                make(map[string]string),
-		HardwareFingerprint: conn.Info.HardwareFingerprint,
-		RegistrationHistory: conn.Info.RegistrationHistory,
-		ConflictStatus:      conn.Info.ConflictStatus,
+		Id:       conn.Info.Id,
+		Hostname: conn.Info.Hostname,
+		Ip:       conn.Info.Ip,
+		Os:       conn.Info.Os,
+		Tags:     make(map[string]string),
 	}
 
 	// Copy existing tags first
@@ -401,14 +295,11 @@ func (r *MinionRegistryImpl) SetTags(minionID string, tags map[string]string) er
 
 	// Create a deep copy of the host info to avoid modifying the original
 	updatedInfo := &pb.HostInfo{
-		Id:                  conn.Info.Id,
-		Hostname:            conn.Info.Hostname,
-		Ip:                  conn.Info.Ip,
-		Os:                  conn.Info.Os,
-		Tags:                make(map[string]string),
-		HardwareFingerprint: conn.Info.HardwareFingerprint,
-		RegistrationHistory: conn.Info.RegistrationHistory,
-		ConflictStatus:      conn.Info.ConflictStatus,
+		Id:       conn.Info.Id,
+		Hostname: conn.Info.Hostname,
+		Ip:       conn.Info.Ip,
+		Os:       conn.Info.Os,
+		Tags:     make(map[string]string),
 	}
 
 	// Copy existing tags first

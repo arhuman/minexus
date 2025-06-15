@@ -24,31 +24,6 @@ message HostInfo {
   string os = 4;
   map<string, string> tags = 5;
   int64 last_seen = 6;  // Unix timestamp of last registration/communication
-  string hardware_fingerprint = 7;  // Unique hardware identifier
-  RegistrationHistory registration_history = 8;
-  string conflict_status = 9;  // null, "pending", "resolved", "manual_review"
-}
-
-message RegistrationHistory {
-  message Registration {
-    int64 timestamp = 1;
-    string id = 2;
-    string ip = 3;
-    string hostname = 4;
-    string hardware_fingerprint = 5;
-  }
-
-  message Conflict {
-    int64 timestamp = 1;
-    string type = 2;  // "duplicate_id", "duplicate_hostname", "hardware_mismatch"
-    string resolution = 3;  // "auto_reassign", "manual", "pending"
-    map<string, string> details = 4;
-  }
-
-  repeated Registration registrations = 1;
-  repeated Conflict conflicts = 2;
-  int64 first_seen = 3;
-  int32 registration_count = 4;
 }
 
 message Command {
@@ -171,20 +146,23 @@ message CommandStatusUpdate {
 
 service MinionService {
   rpc Register(HostInfo) returns (RegisterResponse);
-  rpc GetCommands(Empty) returns (stream Command);
-  rpc SendCommandResult(CommandResult) returns (Ack);
-  rpc UpdateCommandStatus(CommandStatusUpdate) returns (Ack);
+  rpc StreamCommands(stream CommandStreamMessage) returns (stream CommandStreamMessage);
 }
 
 message RegisterResponse {
   bool success = 1;
   string assigned_id = 2;
-  string conflict_status = 3;
-  RegistrationHistory registration_history = 4;
-  string error_message = 5;
-  map<string, string> conflict_details = 6;
+  string error_message = 3;
 }
 
 message MinionInfo {
   string id = 1;
+}
+
+message CommandStreamMessage {
+  oneof message {
+    Command command = 1;           // Nexus -> Minion: New command to execute
+    CommandResult result = 2;      // Minion -> Nexus: Result of executed command
+    CommandStatusUpdate status = 3; // Minion -> Nexus: Status update for command
+  }
 }

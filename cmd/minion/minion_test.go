@@ -15,7 +15,6 @@ import (
 	pb "minexus/protogen"
 
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -31,12 +30,12 @@ type mockMinionServiceClient struct {
 	registerError       bool
 	registerSuccess     bool
 	assignedID          string
-	getCommandsError    bool
-	sendResultError     bool
+	streamError         bool
 	commandsToSend      []*pb.Command
 	commandIndex        int
 	mu                  sync.Mutex
 	receivedResults     []*pb.CommandResult
+	receivedStatuses    []*pb.CommandStatusUpdate
 	streamRecvError     bool
 	streamRecvErrorOnce bool
 	streamRecvCount     int
@@ -52,11 +51,11 @@ func (m *mockMinionServiceClient) Register(_ context.Context, _ *pb.HostInfo, _ 
 	}, nil
 }
 
-func (m *mockMinionServiceClient) GetCommands(_ context.Context, _ *pb.Empty, _ ...grpc.CallOption) (pb.MinionService_GetCommandsClient, error) {
-	if m.getCommandsError {
-		return nil, errors.New("mock get commands error")
+func (m *mockMinionServiceClient) StreamCommands(_ context.Context, _ ...grpc.CallOption) (pb.MinionService_StreamCommandsClient, error) {
+	if m.streamError {
+		return nil, errors.New("mock stream error")
 	}
-	return &mockGetCommandsClient{
+	return &mockStreamCommandsClient{
 		commands:            m.commandsToSend,
 		streamRecvError:     m.streamRecvError,
 		streamRecvErrorOnce: m.streamRecvErrorOnce,
@@ -65,33 +64,31 @@ func (m *mockMinionServiceClient) GetCommands(_ context.Context, _ *pb.Empty, _ 
 	}, nil
 }
 
-func (m *mockMinionServiceClient) SendCommandResult(_ context.Context, req *pb.CommandResult, _ ...grpc.CallOption) (*pb.Ack, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.sendResultError {
-		return nil, errors.New("mock send result error")
-	}
-
-	m.receivedResults = append(m.receivedResults, req)
-	return &pb.Ack{Success: true}, nil
-}
-
-func (m *mockMinionServiceClient) UpdateCommandStatus(_ context.Context, req *pb.CommandStatusUpdate, _ ...grpc.CallOption) (*pb.Ack, error) {
-	return &pb.Ack{Success: true}, nil
-}
-
-// mockGetCommandsClient implements the streaming client
-type mockGetCommandsClient struct {
+// mockStreamCommandsClient implements the bidirectional streaming client
+type mockStreamCommandsClient struct {
 	commands            []*pb.Command
 	commandIndex        int
 	streamRecvError     bool
 	streamRecvErrorOnce bool
 	streamRecvCount     *int
 	parent              *mockMinionServiceClient
+	grpc.ClientStream
 }
 
-func (m *mockGetCommandsClient) Recv() (*pb.Command, error) {
+func (m *mockStreamCommandsClient) Send(msg *pb.CommandStreamMessage) error {
+	m.parent.mu.Lock()
+	defer m.parent.mu.Unlock()
+
+	if result := msg.GetResult(); result != nil {
+		m.parent.receivedResults = append(m.parent.receivedResults, result)
+	}
+	if status := msg.GetStatus(); status != nil {
+		m.parent.receivedStatuses = append(m.parent.receivedStatuses, status)
+	}
+	return nil
+}
+
+func (m *mockStreamCommandsClient) Recv() (*pb.CommandStreamMessage, error) {
 	m.parent.mu.Lock()
 	defer m.parent.mu.Unlock()
 
@@ -114,31 +111,27 @@ func (m *mockGetCommandsClient) Recv() (*pb.Command, error) {
 
 	cmd := m.commands[m.commandIndex]
 	m.commandIndex++
-	return cmd, nil
+	return &pb.CommandStreamMessage{
+		Message: &pb.CommandStreamMessage_Command{
+			Command: cmd,
+		},
+	}, nil
 }
 
-func (m *mockGetCommandsClient) Header() (metadata.MD, error) {
+func (m *mockStreamCommandsClient) Header() (metadata.MD, error) {
 	return nil, nil
 }
 
-func (m *mockGetCommandsClient) Trailer() metadata.MD {
+func (m *mockStreamCommandsClient) Trailer() metadata.MD {
 	return nil
 }
 
-func (m *mockGetCommandsClient) CloseSend() error {
+func (m *mockStreamCommandsClient) CloseSend() error {
 	return nil
 }
 
-func (m *mockGetCommandsClient) Context() context.Context {
+func (m *mockStreamCommandsClient) Context() context.Context {
 	return context.Background()
-}
-
-func (m *mockGetCommandsClient) SendMsg(interface{}) error {
-	return nil
-}
-
-func (m *mockGetCommandsClient) RecvMsg(interface{}) error {
-	return nil
 }
 
 // Test helper functions
@@ -462,8 +455,8 @@ func TestMinionGetCommandsError(t *testing.T) {
 	}
 
 	client := &mockMinionServiceClient{
-		registerSuccess:  true,
-		getCommandsError: true,
+		registerSuccess: true,
+		streamError:     true,
 	}
 
 	logger := zap.NewNop()
@@ -499,7 +492,7 @@ func TestMinionSendResultError(t *testing.T) {
 	client := &mockMinionServiceClient{
 		registerSuccess: true,
 		commandsToSend:  []*pb.Command{testCommand},
-		sendResultError: true,
+		streamError:     true,
 	}
 
 	logger := zap.NewNop()
@@ -1093,115 +1086,6 @@ func TestCommandExecutionTypes(t *testing.T) {
 
 			if results == 0 {
 				t.Errorf("Expected command result for %s", tt.name)
-			}
-		})
-	}
-}
-
-// Tests for the extracted functions from main.go
-
-func TestSetupLogger(t *testing.T) {
-	tests := []struct {
-		name      string
-		debug     bool
-		wantLevel zapcore.Level
-	}{
-		{"debug_logger", true, zapcore.DebugLevel},
-		{"production_logger", false, zapcore.WarnLevel},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			logger, atom, err := setupLogger(tt.debug)
-			if err != nil {
-				t.Fatalf("setupLogger() error = %v", err)
-			}
-			defer logger.Sync()
-
-			if logger == nil {
-				t.Error("setupLogger() returned nil logger")
-			}
-
-			if atom.Level() != tt.wantLevel {
-				t.Errorf("setupLogger() level = %v, want %v", atom.Level(), tt.wantLevel)
-			}
-		})
-	}
-}
-
-func TestCheckVersionFlag(t *testing.T) {
-	tests := []struct {
-		name     string
-		args     []string
-		expected bool
-	}{
-		{"no_args", []string{"minion"}, false},
-		{"version_short", []string{"minion", "-v"}, true},
-		{"version_long", []string{"minion", "--version"}, true},
-		{"other_flag", []string{"minion", "--help"}, false},
-		{"no_flag", []string{"minion", "arg"}, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Save original args
-			originalArgs := os.Args
-			defer func() { os.Args = originalArgs }()
-
-			// Set test args
-			os.Args = tt.args
-
-			got := checkVersionFlag()
-			if got != tt.expected {
-				t.Errorf("checkVersionFlag() = %v, want %v", got, tt.expected)
-			}
-		})
-	}
-}
-
-func TestSetupGRPCConnection(t *testing.T) {
-	if !shouldRunSlowTests() {
-		t.Skip("Skipping slow test - set SLOW_TESTS=true to run")
-	}
-
-	tests := []struct {
-		name        string
-		serverAddr  string
-		timeout     time.Duration
-		expectError bool
-	}{
-		{
-			name:        "invalid_address",
-			serverAddr:  "invalid-address-that-does-not-exist:9999",
-			timeout:     100 * time.Millisecond,
-			expectError: true,
-		},
-		{
-			name:        "empty_address",
-			serverAddr:  "",
-			timeout:     100 * time.Millisecond,
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			conn, err := setupGRPCConnection(tt.serverAddr, tt.timeout)
-
-			if tt.expectError {
-				if err == nil {
-					t.Error("setupGRPCConnection() expected error, got nil")
-					if conn != nil {
-						conn.Close()
-					}
-				}
-			} else {
-				if err != nil {
-					t.Errorf("setupGRPCConnection() unexpected error = %v", err)
-				}
-				if conn != nil {
-					conn.Close()
-				}
 			}
 		})
 	}

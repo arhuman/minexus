@@ -25,6 +25,7 @@ const (
 	ConsoleService_UpdateTags_FullMethodName        = "/minexus.ConsoleService/UpdateTags"
 	ConsoleService_SendCommand_FullMethodName       = "/minexus.ConsoleService/SendCommand"
 	ConsoleService_GetCommandResults_FullMethodName = "/minexus.ConsoleService/GetCommandResults"
+	ConsoleService_GetCommandStatus_FullMethodName  = "/minexus.ConsoleService/GetCommandStatus"
 )
 
 // ConsoleServiceClient is the client API for ConsoleService service.
@@ -37,6 +38,7 @@ type ConsoleServiceClient interface {
 	UpdateTags(ctx context.Context, in *UpdateTagsRequest, opts ...grpc.CallOption) (*Ack, error)
 	SendCommand(ctx context.Context, in *CommandRequest, opts ...grpc.CallOption) (*CommandDispatchResponse, error)
 	GetCommandResults(ctx context.Context, in *ResultRequest, opts ...grpc.CallOption) (*CommandResults, error)
+	GetCommandStatus(ctx context.Context, in *ResultRequest, opts ...grpc.CallOption) (*CommandStatusResponse, error)
 }
 
 type consoleServiceClient struct {
@@ -107,6 +109,16 @@ func (c *consoleServiceClient) GetCommandResults(ctx context.Context, in *Result
 	return out, nil
 }
 
+func (c *consoleServiceClient) GetCommandStatus(ctx context.Context, in *ResultRequest, opts ...grpc.CallOption) (*CommandStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommandStatusResponse)
+	err := c.cc.Invoke(ctx, ConsoleService_GetCommandStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ConsoleServiceServer is the server API for ConsoleService service.
 // All implementations must embed UnimplementedConsoleServiceServer
 // for forward compatibility.
@@ -117,6 +129,7 @@ type ConsoleServiceServer interface {
 	UpdateTags(context.Context, *UpdateTagsRequest) (*Ack, error)
 	SendCommand(context.Context, *CommandRequest) (*CommandDispatchResponse, error)
 	GetCommandResults(context.Context, *ResultRequest) (*CommandResults, error)
+	GetCommandStatus(context.Context, *ResultRequest) (*CommandStatusResponse, error)
 	mustEmbedUnimplementedConsoleServiceServer()
 }
 
@@ -144,6 +157,9 @@ func (UnimplementedConsoleServiceServer) SendCommand(context.Context, *CommandRe
 }
 func (UnimplementedConsoleServiceServer) GetCommandResults(context.Context, *ResultRequest) (*CommandResults, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCommandResults not implemented")
+}
+func (UnimplementedConsoleServiceServer) GetCommandStatus(context.Context, *ResultRequest) (*CommandStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetCommandStatus not implemented")
 }
 func (UnimplementedConsoleServiceServer) mustEmbedUnimplementedConsoleServiceServer() {}
 func (UnimplementedConsoleServiceServer) testEmbeddedByValue()                        {}
@@ -274,6 +290,24 @@ func _ConsoleService_GetCommandResults_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ConsoleService_GetCommandStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResultRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConsoleServiceServer).GetCommandStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConsoleService_GetCommandStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConsoleServiceServer).GetCommandStatus(ctx, req.(*ResultRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ConsoleService_ServiceDesc is the grpc.ServiceDesc for ConsoleService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -305,16 +339,18 @@ var ConsoleService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetCommandResults",
 			Handler:    _ConsoleService_GetCommandResults_Handler,
 		},
+		{
+			MethodName: "GetCommandStatus",
+			Handler:    _ConsoleService_GetCommandStatus_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "minexus.proto",
 }
 
 const (
-	MinionService_Register_FullMethodName            = "/minexus.MinionService/Register"
-	MinionService_GetCommands_FullMethodName         = "/minexus.MinionService/GetCommands"
-	MinionService_SendCommandResult_FullMethodName   = "/minexus.MinionService/SendCommandResult"
-	MinionService_UpdateCommandStatus_FullMethodName = "/minexus.MinionService/UpdateCommandStatus"
+	MinionService_Register_FullMethodName       = "/minexus.MinionService/Register"
+	MinionService_StreamCommands_FullMethodName = "/minexus.MinionService/StreamCommands"
 )
 
 // MinionServiceClient is the client API for MinionService service.
@@ -322,9 +358,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type MinionServiceClient interface {
 	Register(ctx context.Context, in *HostInfo, opts ...grpc.CallOption) (*RegisterResponse, error)
-	GetCommands(ctx context.Context, in *Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Command], error)
-	SendCommandResult(ctx context.Context, in *CommandResult, opts ...grpc.CallOption) (*Ack, error)
-	UpdateCommandStatus(ctx context.Context, in *CommandStatusUpdate, opts ...grpc.CallOption) (*Ack, error)
+	StreamCommands(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[CommandStreamMessage, CommandStreamMessage], error)
 }
 
 type minionServiceClient struct {
@@ -345,53 +379,25 @@ func (c *minionServiceClient) Register(ctx context.Context, in *HostInfo, opts .
 	return out, nil
 }
 
-func (c *minionServiceClient) GetCommands(ctx context.Context, in *Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Command], error) {
+func (c *minionServiceClient) StreamCommands(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[CommandStreamMessage, CommandStreamMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &MinionService_ServiceDesc.Streams[0], MinionService_GetCommands_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &MinionService_ServiceDesc.Streams[0], MinionService_StreamCommands_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[Empty, Command]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
+	x := &grpc.GenericClientStream[CommandStreamMessage, CommandStreamMessage]{ClientStream: stream}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type MinionService_GetCommandsClient = grpc.ServerStreamingClient[Command]
-
-func (c *minionServiceClient) SendCommandResult(ctx context.Context, in *CommandResult, opts ...grpc.CallOption) (*Ack, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Ack)
-	err := c.cc.Invoke(ctx, MinionService_SendCommandResult_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *minionServiceClient) UpdateCommandStatus(ctx context.Context, in *CommandStatusUpdate, opts ...grpc.CallOption) (*Ack, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Ack)
-	err := c.cc.Invoke(ctx, MinionService_UpdateCommandStatus_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
+type MinionService_StreamCommandsClient = grpc.BidiStreamingClient[CommandStreamMessage, CommandStreamMessage]
 
 // MinionServiceServer is the server API for MinionService service.
 // All implementations must embed UnimplementedMinionServiceServer
 // for forward compatibility.
 type MinionServiceServer interface {
 	Register(context.Context, *HostInfo) (*RegisterResponse, error)
-	GetCommands(*Empty, grpc.ServerStreamingServer[Command]) error
-	SendCommandResult(context.Context, *CommandResult) (*Ack, error)
-	UpdateCommandStatus(context.Context, *CommandStatusUpdate) (*Ack, error)
+	StreamCommands(grpc.BidiStreamingServer[CommandStreamMessage, CommandStreamMessage]) error
 	mustEmbedUnimplementedMinionServiceServer()
 }
 
@@ -405,14 +411,8 @@ type UnimplementedMinionServiceServer struct{}
 func (UnimplementedMinionServiceServer) Register(context.Context, *HostInfo) (*RegisterResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Register not implemented")
 }
-func (UnimplementedMinionServiceServer) GetCommands(*Empty, grpc.ServerStreamingServer[Command]) error {
-	return status.Errorf(codes.Unimplemented, "method GetCommands not implemented")
-}
-func (UnimplementedMinionServiceServer) SendCommandResult(context.Context, *CommandResult) (*Ack, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SendCommandResult not implemented")
-}
-func (UnimplementedMinionServiceServer) UpdateCommandStatus(context.Context, *CommandStatusUpdate) (*Ack, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateCommandStatus not implemented")
+func (UnimplementedMinionServiceServer) StreamCommands(grpc.BidiStreamingServer[CommandStreamMessage, CommandStreamMessage]) error {
+	return status.Errorf(codes.Unimplemented, "method StreamCommands not implemented")
 }
 func (UnimplementedMinionServiceServer) mustEmbedUnimplementedMinionServiceServer() {}
 func (UnimplementedMinionServiceServer) testEmbeddedByValue()                       {}
@@ -453,52 +453,12 @@ func _MinionService_Register_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _MinionService_GetCommands_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(Empty)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(MinionServiceServer).GetCommands(m, &grpc.GenericServerStream[Empty, Command]{ServerStream: stream})
+func _MinionService_StreamCommands_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(MinionServiceServer).StreamCommands(&grpc.GenericServerStream[CommandStreamMessage, CommandStreamMessage]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type MinionService_GetCommandsServer = grpc.ServerStreamingServer[Command]
-
-func _MinionService_SendCommandResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CommandResult)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(MinionServiceServer).SendCommandResult(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: MinionService_SendCommandResult_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MinionServiceServer).SendCommandResult(ctx, req.(*CommandResult))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _MinionService_UpdateCommandStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CommandStatusUpdate)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(MinionServiceServer).UpdateCommandStatus(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: MinionService_UpdateCommandStatus_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MinionServiceServer).UpdateCommandStatus(ctx, req.(*CommandStatusUpdate))
-	}
-	return interceptor(ctx, in, info, handler)
-}
+type MinionService_StreamCommandsServer = grpc.BidiStreamingServer[CommandStreamMessage, CommandStreamMessage]
 
 // MinionService_ServiceDesc is the grpc.ServiceDesc for MinionService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -511,20 +471,13 @@ var MinionService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "Register",
 			Handler:    _MinionService_Register_Handler,
 		},
-		{
-			MethodName: "SendCommandResult",
-			Handler:    _MinionService_SendCommandResult_Handler,
-		},
-		{
-			MethodName: "UpdateCommandStatus",
-			Handler:    _MinionService_UpdateCommandStatus_Handler,
-		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "GetCommands",
-			Handler:       _MinionService_GetCommands_Handler,
+			StreamName:    "StreamCommands",
+			Handler:       _MinionService_StreamCommands_Handler,
 			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "minexus.proto",

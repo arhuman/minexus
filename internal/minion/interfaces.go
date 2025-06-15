@@ -20,7 +20,7 @@ type ConnectionManager interface {
 	IsConnected() bool
 
 	// Stream returns the active command stream client for receiving commands from the nexus.
-	Stream() (pb.MinionService_GetCommandsClient, error)
+	Stream() (pb.MinionService_StreamCommandsClient, error)
 
 	// HandleReconnection manages reconnection logic with exponential backoff.
 	HandleReconnection(ctx context.Context) error
@@ -34,13 +34,6 @@ type CommandExecutor interface {
 
 	// CanHandle determines if this executor can handle the given command type.
 	CanHandle(cmd *pb.Command) bool
-}
-
-// ResultSender handles sending command execution results back to the nexus server.
-// It provides methods to transmit command results reliably.
-type ResultSender interface {
-	// Send transmits a command result to the nexus server.
-	Send(ctx context.Context, result *pb.CommandResult) error
 }
 
 // RegistrationManager handles minion registration and heartbeat functionality.

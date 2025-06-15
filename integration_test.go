@@ -294,7 +294,7 @@ func testConsoleCommands(t *testing.T) {
 			name:       "Minion list",
 			command:    "minion-list",
 			shouldWork: true,
-			contains:   []string{"Connected minions", "test-minion-01"},
+			contains:   []string{"Connected minions", "minion-docker-01"},
 		},
 		{
 			name:       "Minion list alias",
