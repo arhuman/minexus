@@ -549,6 +549,48 @@ Results include:
 
 The console provides several management commands for interacting with minions and the system:
 
+### command-status
+**Purpose:** Display command execution status and statistics
+
+**Usage:**
+```
+minexus> command-status all                  # Show status breakdown of all commands
+minexus> command-status minion <id>          # Show detailed status for specific minion
+minexus> command-status stats                # Show execution statistics by minion
+```
+
+**Subcommands:**
+
+1. **command-status all**
+   - Shows comprehensive overview of all commands
+   - Displays counts for each status (Pending, Received, Executing, Completed, Failed)
+   - Includes total commands per status
+   - Shows summary row with overall totals
+
+2. **command-status minion <id>**
+   - Shows detailed command history for a specific minion
+   - Displays hostname for better identification
+   - Shows exit codes for completed commands
+   - Includes timestamps for each command
+
+3. **command-status stats**
+   - Shows statistics grouped by minion
+   - Displays total commands, completed, and failed counts
+   - Calculates success rate for each minion
+   - Includes overall system success rate
+
+**Examples:**
+```
+# View all command statuses with totals
+minexus> command-status all
+
+# Check specific minion's command history
+minexus> command-status minion abc123
+
+# View success rates across all minions
+minexus> command-status stats
+```
+
 ### minion-list (lm)
 **Purpose:** List all connected minions with their status and information
 
