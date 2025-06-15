@@ -153,6 +153,8 @@ Comprehensive documentation is available in the [`documentation/`](documentation
 - **[VERSION.md](documentation/VERSION.md)** - Version handling, building, and querying guide
 - **[COMMANDS.md](documentation/COMMANDS.md)** - Complete guide to all minion commands
 - **[TESTING.md](documentation/TESTING.md)** - Comprehensive testing guide and best practices
+- **[SIMPLIFICATION.md](documentation/SIMPLIFICATION.md)** - Architecture improvements and simplification details
+- **[IMPLEMENTATION_PLAN.md](documentation/IMPLEMENTATION_PLAN.md)** - Detailed implementation status and refactoring progress
 
 ### Quick Documentation Links
 
@@ -178,6 +180,17 @@ Comprehensive documentation is available in the [`documentation/`](documentation
 - **Zero-config Defaults**: Works immediately without configuration
 - **Flexible Configuration**: Multiple configuration methods
 - **Database Persistence**: Command history and minion registry
+
+### Recent Improvements (2025-06-15)
+
+The Minexus system has undergone **architecture simplification** to improve reliability, performance, and maintainability:
+
+- **✅ Bidirectional Streaming**: Full gRPC streaming implementation for efficient command exchange
+- **✅ Simplified Registration**: Removed complex conflict detection and registration history tracking
+- **✅ Streamlined State Management**: Eliminated unnecessary complexity 
+- **✅ Improved Performance**: Reduced memory usage and synchronization overhead
+- **✅ Enhanced Reliability**: Fewer moving parts and simplified connection handling
+
 
 ## Development
 

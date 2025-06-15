@@ -78,7 +78,7 @@ func NewServer(dbConnectionString string, logger *zap.Logger) (*Server, error) {
 	if dbService != nil {
 		dbServiceImpl = dbService.(*DatabaseServiceImpl)
 	}
-	minionRegistry := NewMinionRegistry(dbServiceImpl)
+	minionRegistry := NewMinionRegistry(dbServiceImpl, logger)
 
 	// Create the server instance with extracted services
 	s := &Server{
@@ -143,7 +143,6 @@ func (s *Server) Register(ctx context.Context, hostInfo *pb.HostInfo) (*pb.Regis
 	if !resp.Success {
 		logger.Info("Registration unsuccessful",
 			zap.String("host_id", hostInfo.Id),
-			zap.String("conflict_status", resp.ConflictStatus),
 			zap.String("error", resp.ErrorMessage))
 	} else {
 		logger.Info("Minion registered successfully",
@@ -168,17 +167,14 @@ func GetMinionIDFromContext(ctx context.Context) string {
 	return values[0]
 }
 
-// GetCommands implements the server-side streaming RPC for the MinionService.
-// Minions call this method to receive commands from the Nexus server.
-// The server streams commands to the requesting minion through the provided stream.
-func (s *Server) GetCommands(empty *pb.Empty, stream pb.MinionService_GetCommandsServer) error {
-
-	logger, start := logging.FuncLogger(s.logger, "nexus.Server.GetCommands")
+// StreamCommands implements bidirectional streaming RPC for command exchange.
+// This replaces the previous GetCommands, SendCommandResult, and UpdateCommandStatus methods
+// with a single bidirectional stream for more efficient communication.
+func (s *Server) StreamCommands(stream pb.MinionService_StreamCommandsServer) error {
+	logger, start := logging.FuncLogger(s.logger, "nexus.Server.StreamCommands")
 	defer logging.FuncExit(logger, start)
 
 	minionID := GetMinionIDFromContext(stream.Context())
-	logger.Debug("Method called", zap.String("minion_id", minionID))
-
 	if minionID == "" {
 		logger.Error("Minion ID not provided")
 		return status.Error(codes.Unauthenticated, "minion ID not provided")
@@ -192,108 +188,80 @@ func (s *Server) GetCommands(empty *pb.Empty, stream pb.MinionService_GetCommand
 		return status.Error(codes.NotFound, "minion not found")
 	}
 
-	logger.Debug("Minion found, starting command stream", zap.String("minion_id", minionID))
-
-	// Update last seen in registry
+	logger.Debug("Minion connected to command stream", zap.String("minion_id", minionID))
 	minionRegistryImpl.UpdateLastSeen(minionID)
 
-	// Stream commands from the channel with proper context handling
+	// Create error channel for coordinating goroutine termination
+	errCh := make(chan error, 1)
+
+	// Start goroutine to receive messages from minion
+	go func() {
+		for {
+			msg, err := stream.Recv()
+			if err != nil {
+				errCh <- err
+				return
+			}
+
+			switch m := msg.Message.(type) {
+			case *pb.CommandStreamMessage_Result:
+				// Handle command result
+				result := m.Result
+				if s.dbService != nil {
+					if err := s.dbService.StoreCommandResult(stream.Context(), result); err != nil {
+						logger.Error("Failed to store command result",
+							zap.String("command_id", result.CommandId),
+							zap.String("minion_id", result.MinionId))
+					}
+				}
+
+			case *pb.CommandStreamMessage_Status:
+				// Handle status update
+				status := m.Status
+				if s.dbService != nil {
+					if err := s.dbService.UpdateCommandStatus(stream.Context(), status.CommandId, status.Status); err != nil {
+						logger.Error("Failed to update command status",
+							zap.String("command_id", status.CommandId),
+							zap.String("minion_id", status.MinionId))
+					}
+				}
+			}
+		}
+	}()
+
+	// Main loop for sending commands
 	for {
 		select {
 		case <-stream.Context().Done():
-			err := stream.Context().Err()
-			logger.Debug("Stream context cancelled",
-				zap.String("minion_id", minionID),
-				zap.Error(err))
+			return stream.Context().Err()
+
+		case err := <-errCh:
 			return err
+
 		case cmd, ok := <-conn.CommandCh:
 			if !ok {
-				logger.Warn("Command channel closed",
-					zap.String("minion_id", minionID))
+				logger.Warn("Command channel closed", zap.String("minion_id", minionID))
 				return nil
 			}
-			logger.Debug("Sending command to minion",
-				zap.String("minion_id", minionID),
-				zap.String("command_id", cmd.Id),
-				zap.String("payload", cmd.Payload))
-			if err := stream.Send(cmd); err != nil {
+
+			msg := &pb.CommandStreamMessage{
+				Message: &pb.CommandStreamMessage_Command{
+					Command: cmd,
+				},
+			}
+
+			if err := stream.Send(msg); err != nil {
 				logger.Error("Failed to send command",
 					zap.String("minion_id", minionID),
-					zap.String("command_id", cmd.Id),
-					zap.String("payload", cmd.Payload))
+					zap.String("command_id", cmd.Id))
 				return err
 			}
+
 			logger.Debug("Command sent successfully",
 				zap.String("minion_id", minionID),
 				zap.String("command_id", cmd.Id))
 		}
 	}
-}
-
-// SendCommandResult handles command execution results from minions in the MinionService.
-// Minions use this method to report back the results of command execution,
-// including exit codes, stdout, stderr, and execution timestamps.
-func (s *Server) SendCommandResult(ctx context.Context, result *pb.CommandResult) (*pb.Ack, error) {
-
-	logger, start := logging.FuncLogger(s.logger, "Nexus.SendCommandResult")
-	defer logging.FuncExit(logger, start)
-
-	logger.Info("Received command result from minion",
-		zap.String("command_id", result.CommandId),
-		zap.String("minion_id", result.MinionId),
-		zap.Int32("exit_code", result.ExitCode),
-		zap.String("stdout", result.Stdout))
-
-	// Store result using the database service if available
-	if s.dbService != nil {
-		if err := s.dbService.StoreCommandResult(ctx, result); err != nil {
-			logger.Error("Failed to store command result",
-				zap.String("command_id", result.CommandId),
-				zap.String("minion_id", result.MinionId))
-			return &pb.Ack{Success: false}, err
-		}
-		logger.Info("Successfully stored command result in database",
-			zap.String("command_id", result.CommandId),
-			zap.String("minion_id", result.MinionId))
-	} else {
-		logger.Debug("Database service not available, skipping result storage",
-			zap.String("command_id", result.CommandId),
-			zap.String("minion_id", result.MinionId))
-	}
-
-	return &pb.Ack{Success: true}, nil
-}
-
-// UpdateCommandStatus handles command status updates from minions in the MinionService.
-// Minions use this method to report the current status of command execution.
-func (s *Server) UpdateCommandStatus(ctx context.Context, update *pb.CommandStatusUpdate) (*pb.Ack, error) {
-	logger, start := logging.FuncLogger(s.logger, "Nexus.UpdateCommandStatus")
-	defer logging.FuncExit(logger, start)
-
-	logger.Debug("Received command status update",
-		zap.String("command_id", update.CommandId),
-		zap.String("minion_id", update.MinionId),
-		zap.String("status", update.Status))
-
-	// Update command status using the database service if available
-	if s.dbService != nil {
-		if err := s.dbService.UpdateCommandStatus(ctx, update.CommandId, update.Status); err != nil {
-			logger.Error("Failed to update command status",
-				zap.String("command_id", update.CommandId),
-				zap.String("minion_id", update.MinionId),
-				zap.String("status", update.Status),
-				zap.Error(err))
-			return &pb.Ack{Success: false}, err
-		}
-		logger.Debug("Successfully updated command status in database",
-			zap.String("command_id", update.CommandId),
-			zap.String("status", update.Status))
-	} else {
-		logger.Debug("Database service not available, skipping status update",
-			zap.String("command_id", update.CommandId))
-	}
-
-	return &pb.Ack{Success: true}, nil
 }
 
 // ListMinions returns a list of all registered minions in the ConsoleService.
@@ -497,23 +465,13 @@ func (s *Server) SendCommand(ctx context.Context, req *pb.CommandRequest) (*pb.C
 	minionRegistryImpl := s.minionRegistry.(*MinionRegistryImpl)
 	for _, minionID := range targets {
 		if conn, exists := minionRegistryImpl.GetConnectionImpl(minionID); exists {
-			// Initialize metadata if it doesn't exist
-			if req.Command.Metadata == nil {
-				req.Command.Metadata = make(map[string]string)
-			}
-
-			// Add sequence number to command metadata
-			seqNum := conn.NextSeqNumber
-			req.Command.Metadata["seq_num"] = fmt.Sprintf("%d", seqNum)
-			conn.NextSeqNumber++ // Increment for next command
-
+			// PHASE 3.2: Removed sequence number tracking - stream ordering handles this
 			select {
 			case conn.CommandCh <- req.Command:
 				logger.Info("Command sent to minion channel",
 					zap.String("command_id", commandID),
 					zap.String("minion_id", minionID),
-					zap.String("payload", req.Command.Payload),
-					zap.Uint64("seq_num", seqNum))
+					zap.String("payload", req.Command.Payload))
 			default:
 				logger.Warn("Command channel full, skipping minion",
 					zap.String("command_id", commandID),

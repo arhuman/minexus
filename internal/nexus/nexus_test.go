@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -34,7 +35,7 @@ func createTestServer(db *sql.DB) *Server {
 	if dbService != nil {
 		dbServiceImpl = dbService.(*DatabaseServiceImpl)
 	}
-	minionRegistry := NewMinionRegistry(dbServiceImpl)
+	minionRegistry := NewMinionRegistry(dbServiceImpl, logger)
 
 	return &Server{
 		logger:          logger,
@@ -184,14 +185,12 @@ func TestSetTagsWithMissingDatabaseRecord(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 0)) // 0 rows affected
 
 	// Mock the INSERT operation that should follow
-	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags, hardware_fingerprint\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7, \\$8\\)").
-		WithArgs(minionID, "test-host", "192.168.1.100", "linux", sqlmock.AnyArg(), sqlmock.AnyArg(), `{"env":"test"}`, "").
+	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7\\) ON CONFLICT \\(id\\) DO UPDATE SET hostname = EXCLUDED.hostname, ip = EXCLUDED.ip, os = EXCLUDED.os, last_seen = EXCLUDED.last_seen, tags = EXCLUDED.tags").
+		WithArgs(minionID, "test-host", "192.168.1.100", "linux", sqlmock.AnyArg(), sqlmock.AnyArg(), `{"env":"test"}`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	// Expect registration history record
-	mock.ExpectExec("INSERT INTO registration_history \\(host_id, registration_type, details\\) VALUES \\(\\$1, \\$2, \\$3\\)").
-		WithArgs(minionID, "REGISTRATION", sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
+	// PHASE 3: Registration history operations removed
+	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
 
 	// Create the SetTags request
 	req := &pb.SetTagsRequest{
@@ -256,14 +255,12 @@ func TestUpdateTagsWithMissingDatabaseRecord(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 0)) // 0 rows affected
 
 	// Mock the INSERT operation that should follow
-	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags, hardware_fingerprint\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7, \\$8\\)").
-		WithArgs(minionID, "test-host-2", "192.168.1.101", "darwin", sqlmock.AnyArg(), sqlmock.AnyArg(), `{"env":"production","existing":"tag"}`, "").
+	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7\\) ON CONFLICT \\(id\\) DO UPDATE SET hostname = EXCLUDED.hostname, ip = EXCLUDED.ip, os = EXCLUDED.os, last_seen = EXCLUDED.last_seen, tags = EXCLUDED.tags").
+		WithArgs(minionID, "test-host-2", "192.168.1.101", "darwin", sqlmock.AnyArg(), sqlmock.AnyArg(), `{"env":"production","existing":"tag"}`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	// Expect registration history record
-	mock.ExpectExec("INSERT INTO registration_history \\(host_id, registration_type, details\\) VALUES \\(\\$1, \\$2, \\$3\\)").
-		WithArgs(minionID, "REGISTRATION", sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
+	// PHASE 3: Registration history operations removed
+	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
 
 	// Create the UpdateTags request
 	req := &pb.UpdateTagsRequest{
@@ -490,14 +487,12 @@ func TestMinionRegistrationDataIntegrity(t *testing.T) {
 
 	// Mock the database operations for registration
 	// New architecture calls StoreHost directly for new minions
-	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags, hardware_fingerprint\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7, \\$8\\)").
-		WithArgs(testMinionID, testHostname, testIP, testOS, sqlmock.AnyArg(), sqlmock.AnyArg(), "{}", "").
+	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7\\) ON CONFLICT \\(id\\) DO UPDATE SET hostname = EXCLUDED.hostname, ip = EXCLUDED.ip, os = EXCLUDED.os, last_seen = EXCLUDED.last_seen, tags = EXCLUDED.tags").
+		WithArgs(testMinionID, testHostname, testIP, testOS, sqlmock.AnyArg(), sqlmock.AnyArg(), "{}").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	// Expect registration history record
-	mock.ExpectExec("INSERT INTO registration_history \\(host_id, registration_type, details\\) VALUES \\(\\$1, \\$2, \\$3\\)").
-		WithArgs(testMinionID, "REGISTRATION", sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
+	// PHASE 3: Registration history operations removed
+	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
 
 	// Call Register
 	response, err := server.Register(context.Background(), hostInfo)
@@ -565,14 +560,12 @@ func TestDatabaseSchemaConsistency(t *testing.T) {
 	}
 
 	// Mock registration database operations - new architecture calls StoreHost directly
-	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags, hardware_fingerprint\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7, \\$8\\)").
-		WithArgs(testMinionID, testHostname, testIP, testOS, sqlmock.AnyArg(), sqlmock.AnyArg(), "{}", "").
+	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7\\) ON CONFLICT \\(id\\) DO UPDATE SET hostname = EXCLUDED.hostname, ip = EXCLUDED.ip, os = EXCLUDED.os, last_seen = EXCLUDED.last_seen, tags = EXCLUDED.tags").
+		WithArgs(testMinionID, testHostname, testIP, testOS, sqlmock.AnyArg(), sqlmock.AnyArg(), "{}").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	// Expect registration history record
-	mock.ExpectExec("INSERT INTO registration_history \\(host_id, registration_type, details\\) VALUES \\(\\$1, \\$2, \\$3\\)").
-		WithArgs(testMinionID, "REGISTRATION", sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
+	// PHASE 3: Registration history operations removed
+	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
 
 	_, err = server.Register(context.Background(), hostInfo)
 	if err != nil {
@@ -644,14 +637,12 @@ func TestMinionRegistrationWithPredefinedID(t *testing.T) {
 	}
 
 	// Mock database operations - new architecture calls StoreHost directly
-	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags, hardware_fingerprint\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7, \\$8\\)").
-		WithArgs(predefinedMinionID, actualHostname, actualIP, actualOS, sqlmock.AnyArg(), sqlmock.AnyArg(), "{}", "").
+	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7\\) ON CONFLICT \\(id\\) DO UPDATE SET hostname = EXCLUDED.hostname, ip = EXCLUDED.ip, os = EXCLUDED.os, last_seen = EXCLUDED.last_seen, tags = EXCLUDED.tags").
+		WithArgs(predefinedMinionID, actualHostname, actualIP, actualOS, sqlmock.AnyArg(), sqlmock.AnyArg(), "{}").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	// Mock registration history record
-	mock.ExpectExec("INSERT INTO registration_history \\(host_id, registration_type, details\\) VALUES \\(\\$1, \\$2, \\$3\\)").
-		WithArgs(predefinedMinionID, "REGISTRATION", sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
+	// PHASE 3: Registration history operations removed
+	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
 
 	// Register the minion
 	response, err := server.Register(context.Background(), hostInfo)
@@ -870,105 +861,63 @@ func TestGetMinionIDFromContext(t *testing.T) {
 	}
 }
 
-// TestSendCommandResult tests command result processing
-func TestSendCommandResult(t *testing.T) {
-	tests := []struct {
-		name        string
-		setupMock   func(sqlmock.Sqlmock)
-		result      *pb.CommandResult
-		expectError bool
-	}{
-		{
-			name: "successful result storage",
-			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectExec("INSERT INTO command_results \\(command_id, minion_id, exit_code, stdout, stderr, timestamp\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6\\)").
-					WithArgs("cmd-123", "minion-456", int32(0), "success output", "", sqlmock.AnyArg()).
-					WillReturnResult(sqlmock.NewResult(1, 1))
-			},
-			result: &pb.CommandResult{
-				CommandId: "cmd-123",
-				MinionId:  "minion-456",
-				ExitCode:  0,
-				Stdout:    "success output",
-				Stderr:    "",
-				Timestamp: time.Now().Unix(),
-			},
-			expectError: false,
-		},
-		{
-			name: "database error during insert",
-			setupMock: func(mock sqlmock.Sqlmock) {
-				mock.ExpectExec("INSERT INTO command_results \\(command_id, minion_id, exit_code, stdout, stderr, timestamp\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6\\)").
-					WithArgs("cmd-123", "minion-456", int32(1), "", "error output", sqlmock.AnyArg()).
-					WillReturnError(fmt.Errorf("database connection failed"))
-			},
-			result: &pb.CommandResult{
-				CommandId: "cmd-123",
-				MinionId:  "minion-456",
-				ExitCode:  1,
-				Stdout:    "",
-				Stderr:    "error output",
-				Timestamp: time.Now().Unix(),
-			},
-			expectError: true,
-		},
+// TestStreamCommandsWithResults tests bidirectional streaming with command results
+func TestStreamCommandsWithResults(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create mock database: %v", err)
+	}
+	defer db.Close()
+
+	server := createTestServer(db)
+
+	// Add test minion
+	minionID := "test-minion"
+	server.GetMinionRegistryImpl().minions[minionID] = &MinionConnectionImpl{
+		Info:      &pb.HostInfo{Id: minionID},
+		CommandCh: make(chan *pb.Command, 10),
+		LastSeen:  time.Now(),
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			db, mock, err := sqlmock.New()
-			if err != nil {
-				t.Fatalf("Failed to create mock database: %v", err)
-			}
-			defer db.Close()
+	// Mock database operations for result storage
+	mock.ExpectExec("INSERT INTO command_results \\(command_id, minion_id, exit_code, stdout, stderr, timestamp\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6\\)").
+		WithArgs("cmd-123", minionID, int32(0), "success output", "", sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
-			server := createTestServer(db)
-			tt.setupMock(mock)
-
-			ack, err := server.SendCommandResult(context.Background(), tt.result)
-
-			if tt.expectError {
-				if err == nil {
-					t.Error("Expected error but got none")
-				}
-				if ack.Success {
-					t.Error("Expected ack.Success to be false")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Unexpected error: %v", err)
-				}
-				if !ack.Success {
-					t.Error("Expected ack.Success to be true")
-				}
-			}
-
-			if err := mock.ExpectationsWereMet(); err != nil {
-				t.Errorf("Unfulfilled mock expectations: %v", err)
-			}
-		})
-	}
-}
-
-// TestSendCommandResultWithoutDatabase tests result processing without database
-func TestSendCommandResultWithoutDatabase(t *testing.T) {
-	server := createTestServer(nil) // No database
-
+	// Create test messages
 	result := &pb.CommandResult{
 		CommandId: "cmd-123",
-		MinionId:  "minion-456",
+		MinionId:  minionID,
 		ExitCode:  0,
-		Stdout:    "output",
+		Stdout:    "success output",
 		Stderr:    "",
 		Timestamp: time.Now().Unix(),
 	}
 
-	ack, err := server.SendCommandResult(context.Background(), result)
-	if err != nil {
+	recvMsgs := []*pb.CommandStreamMessage{
+		{
+			Message: &pb.CommandStreamMessage_Result{
+				Result: result,
+			},
+		},
+	}
+
+	md := metadata.New(map[string]string{"minion-id": minionID})
+	ctx := metadata.NewIncomingContext(context.Background(), md)
+
+	stream := &MockStreamServer{
+		ctx:      ctx,
+		recvMsgs: recvMsgs,
+	}
+
+	err = server.StreamCommands(stream)
+	if err != nil && err != io.EOF {
 		t.Errorf("Unexpected error: %v", err)
 	}
-	if !ack.Success {
-		t.Error("Expected ack.Success to be true even without database")
+
+	// Verify database expectations were met
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled mock expectations: %v", err)
 	}
 }
 
@@ -1633,14 +1582,12 @@ func TestRegisterWithExistingRecord(t *testing.T) {
 	}
 
 	// Mock the INSERT operation for new registration (new architecture calls StoreHost)
-	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags, hardware_fingerprint\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7, \\$8\\)").
-		WithArgs(testMinionID, testHostname, testIP, testOS, sqlmock.AnyArg(), sqlmock.AnyArg(), `{"env":"test"}`, "").
+	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7\\) ON CONFLICT \\(id\\) DO UPDATE SET hostname = EXCLUDED.hostname, ip = EXCLUDED.ip, os = EXCLUDED.os, last_seen = EXCLUDED.last_seen, tags = EXCLUDED.tags").
+		WithArgs(testMinionID, testHostname, testIP, testOS, sqlmock.AnyArg(), sqlmock.AnyArg(), `{"env":"test"}`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	// Expect registration history record
-	mock.ExpectExec("INSERT INTO registration_history \\(host_id, registration_type, details\\) VALUES \\(\\$1, \\$2, \\$3\\)").
-		WithArgs(testMinionID, "REGISTRATION", sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
+	// PHASE 3: Registration history operations removed
+	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
 
 	response, err := server.Register(context.Background(), hostInfo)
 	if err != nil {
@@ -1694,14 +1641,12 @@ func TestRegisterWithoutID(t *testing.T) {
 	}
 
 	// Expect INSERT for new registration (new architecture calls StoreHost)
-	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags, hardware_fingerprint\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7, \\$8\\)").
-		WithArgs(sqlmock.AnyArg(), "new-host", "192.168.1.150", "linux", sqlmock.AnyArg(), sqlmock.AnyArg(), "{}", "").
+	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7\\) ON CONFLICT \\(id\\) DO UPDATE SET hostname = EXCLUDED.hostname, ip = EXCLUDED.ip, os = EXCLUDED.os, last_seen = EXCLUDED.last_seen, tags = EXCLUDED.tags").
+		WithArgs(sqlmock.AnyArg(), "new-host", "192.168.1.150", "linux", sqlmock.AnyArg(), sqlmock.AnyArg(), "{}").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	// Expect registration history record
-	mock.ExpectExec("INSERT INTO registration_history \\(host_id, registration_type, details\\) VALUES \\(\\$1, \\$2, \\$3\\)").
-		WithArgs(sqlmock.AnyArg(), "REGISTRATION", sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
+	// PHASE 3: Registration history operations removed
+	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
 
 	response, err := server.Register(context.Background(), hostInfo)
 	if err != nil {
@@ -1928,51 +1873,68 @@ func TestValidateCommandInternal(t *testing.T) {
 	}
 }
 
-// MockServerStream implements grpc.ServerStreamingServer for testing
-type MockServerStream struct {
-	ctx      context.Context
-	sentCmds []*pb.Command
-	sendErr  error
+// MockStreamServer implements pb.MinionService_StreamCommandsServer for testing
+type MockStreamServer struct {
+	ctx       context.Context
+	sentMsgs  []*pb.CommandStreamMessage
+	recvMsgs  []*pb.CommandStreamMessage
+	recvIndex int
+	sendErr   error
+	recvErr   error
 }
 
-func (m *MockServerStream) Send(cmd *pb.Command) error {
+func (m *MockStreamServer) Send(msg *pb.CommandStreamMessage) error {
 	if m.sendErr != nil {
 		return m.sendErr
 	}
-	m.sentCmds = append(m.sentCmds, cmd)
+	m.sentMsgs = append(m.sentMsgs, msg)
 	return nil
 }
 
-func (m *MockServerStream) Context() context.Context {
+func (m *MockStreamServer) Recv() (*pb.CommandStreamMessage, error) {
+	if m.recvErr != nil {
+		return nil, m.recvErr
+	}
+	if m.recvIndex >= len(m.recvMsgs) {
+		return nil, io.EOF
+	}
+	msg := m.recvMsgs[m.recvIndex]
+	m.recvIndex++
+	return msg, nil
+}
+
+func (m *MockStreamServer) Context() context.Context {
 	return m.ctx
 }
 
-func (m *MockServerStream) SendMsg(msg interface{}) error {
+func (m *MockStreamServer) SendMsg(msg interface{}) error {
 	return nil
 }
 
-func (m *MockServerStream) RecvMsg(msg interface{}) error {
+func (m *MockStreamServer) RecvMsg(msg interface{}) error {
 	return nil
 }
 
-func (m *MockServerStream) SetHeader(metadata.MD) error {
+func (m *MockStreamServer) SetHeader(metadata.MD) error {
 	return nil
 }
 
-func (m *MockServerStream) SendHeader(metadata.MD) error {
+func (m *MockStreamServer) SendHeader(metadata.MD) error {
 	return nil
 }
 
-func (m *MockServerStream) SetTrailer(metadata.MD) {}
+func (m *MockStreamServer) SetTrailer(metadata.MD) {}
 
-// TestGetCommands tests the streaming command method
-func TestGetCommands(t *testing.T) {
+// TestStreamCommands tests the bidirectional streaming command method
+func TestStreamCommands(t *testing.T) {
 	tests := []struct {
 		name        string
 		setupCtx    func() context.Context
 		setupServer func(*Server) string
+		setupStream func(*MockStreamServer)
 		expectError bool
 		errorCode   codes.Code
+		verify      func(*testing.T, *Server, string, *MockStreamServer)
 	}{
 		{
 			name: "no minion ID in context",
@@ -1982,8 +1944,10 @@ func TestGetCommands(t *testing.T) {
 			setupServer: func(s *Server) string {
 				return ""
 			},
+			setupStream: func(s *MockStreamServer) {},
 			expectError: true,
 			errorCode:   codes.Unauthenticated,
+			verify:      func(t *testing.T, s *Server, id string, stream *MockStreamServer) {},
 		},
 		{
 			name: "minion not found",
@@ -1994,11 +1958,13 @@ func TestGetCommands(t *testing.T) {
 			setupServer: func(s *Server) string {
 				return "non-existent"
 			},
+			setupStream: func(s *MockStreamServer) {},
 			expectError: true,
 			errorCode:   codes.NotFound,
+			verify:      func(t *testing.T, s *Server, id string, stream *MockStreamServer) {},
 		},
 		{
-			name: "successful streaming",
+			name: "successful streaming with command and status",
 			setupCtx: func() context.Context {
 				md := metadata.New(map[string]string{"minion-id": "test-minion"})
 				return metadata.NewIncomingContext(context.Background(), md)
@@ -2012,18 +1978,68 @@ func TestGetCommands(t *testing.T) {
 					LastSeen:  time.Now(),
 				}
 
-				// Send a test command and close the channel
-				go func() {
-					registry.minions[minionID].CommandCh <- &pb.Command{
-						Id:      "cmd-1",
-						Payload: "test command",
-					}
-					close(registry.minions[minionID].CommandCh)
-				}()
+				// Pre-populate the command channel
+				registry.minions[minionID].CommandCh <- &pb.Command{
+					Id:      "cmd-1",
+					Payload: "test command",
+				}
 
 				return minionID
 			},
+			setupStream: func(s *MockStreamServer) {
+				s.recvMsgs = []*pb.CommandStreamMessage{
+					{
+						Message: &pb.CommandStreamMessage_Status{
+							Status: &pb.CommandStatusUpdate{
+								CommandId: "cmd-1",
+								MinionId:  "test-minion",
+								Status:    "EXECUTING",
+								Timestamp: time.Now().Unix(),
+							},
+						},
+					},
+					{
+						Message: &pb.CommandStreamMessage_Result{
+							Result: &pb.CommandResult{
+								CommandId: "cmd-1",
+								MinionId:  "test-minion",
+								ExitCode:  0,
+								Stdout:    "test output",
+							},
+						},
+					},
+				}
+			},
 			expectError: false,
+			verify: func(t *testing.T, s *Server, minionID string, stream *MockStreamServer) {
+				// Verify last seen was updated
+				registry := s.GetMinionRegistryImpl()
+				registry.minionsMu.RLock()
+				conn := registry.minions[minionID]
+				registry.minionsMu.RUnlock()
+
+				if time.Since(conn.LastSeen) > time.Second {
+					t.Error("Expected LastSeen to be updated")
+				}
+
+				// Verify command was sent
+				if len(stream.sentMsgs) != 1 {
+					t.Errorf("Expected 1 command to be sent, got %d", len(stream.sentMsgs))
+				} else {
+					msg := stream.sentMsgs[0]
+					cmd := msg.GetCommand()
+					if cmd == nil {
+						t.Error("Expected CommandStreamMessage to contain a Command")
+					} else if cmd.Payload != "test command" {
+						t.Errorf("Expected command payload 'test command', got '%s'", cmd.Payload)
+					}
+				}
+
+				// Verify status and result messages were processed
+				if len(stream.recvMsgs) != 2 {
+					t.Errorf("Expected 2 messages to be received, got %d", len(stream.recvMsgs))
+				}
+			},
 		},
 	}
 
@@ -2038,11 +2054,12 @@ func TestGetCommands(t *testing.T) {
 			server := createTestServer(db)
 			minionID := tt.setupServer(server)
 
-			stream := &MockServerStream{
+			stream := &MockStreamServer{
 				ctx: tt.setupCtx(),
 			}
+			tt.setupStream(stream)
 
-			err = server.GetCommands(&pb.Empty{}, stream)
+			err = server.StreamCommands(stream)
 
 			if tt.expectError {
 				if err == nil {
@@ -2056,38 +2073,17 @@ func TestGetCommands(t *testing.T) {
 					}
 				}
 			} else {
-				if err != nil {
+				if err != nil && err != io.EOF {
 					t.Errorf("Unexpected error: %v", err)
 				}
-
-				// Verify last seen was updated
-				if minionID != "" {
-					registry := server.GetMinionRegistryImpl()
-					registry.minionsMu.RLock()
-					conn := registry.minions[minionID]
-					registry.minionsMu.RUnlock()
-
-					if time.Since(conn.LastSeen) > time.Second {
-						t.Error("Expected LastSeen to be updated")
-					}
-				}
-
-				// Verify command was sent
-				if len(stream.sentCmds) != 1 {
-					t.Errorf("Expected 1 command to be sent, got %d", len(stream.sentCmds))
-				} else {
-					cmd := stream.sentCmds[0]
-					if cmd.Payload != "test command" {
-						t.Errorf("Expected command payload 'test command', got '%s'", cmd.Payload)
-					}
-				}
+				tt.verify(t, server, minionID, stream)
 			}
 		})
 	}
 }
 
-// TestGetCommandsStreamError tests streaming with send error
-func TestGetCommandsStreamError(t *testing.T) {
+// TestStreamCommandsError tests streaming with send error
+func TestStreamCommandsError(t *testing.T) {
 	db, _, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("Failed to create mock database: %v", err)
@@ -2115,12 +2111,12 @@ func TestGetCommandsStreamError(t *testing.T) {
 	md := metadata.New(map[string]string{"minion-id": minionID})
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
-	stream := &MockServerStream{
+	stream := &MockStreamServer{
 		ctx:     ctx,
 		sendErr: fmt.Errorf("stream send error"),
 	}
 
-	err = server.GetCommands(&pb.Empty{}, stream)
+	err = server.StreamCommands(stream)
 	if err == nil {
 		t.Error("Expected error from stream send failure")
 	}
@@ -2187,7 +2183,7 @@ func TestDatabaseErrors(t *testing.T) {
 
 		server := createTestServer(db)
 
-		mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags, hardware_fingerprint\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7, \\$8\\)").
+		mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7\\) ON CONFLICT \\(id\\) DO UPDATE SET hostname = EXCLUDED.hostname, ip = EXCLUDED.ip, os = EXCLUDED.os, last_seen = EXCLUDED.last_seen, tags = EXCLUDED.tags").
 			WillReturnError(fmt.Errorf("database connection failed"))
 
 		hostInfo := &pb.HostInfo{
@@ -2213,7 +2209,7 @@ func TestDatabaseErrors(t *testing.T) {
 
 		server := createTestServer(db)
 
-		mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags, hardware_fingerprint\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7, \\$8\\)").
+		mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7\\) ON CONFLICT \\(id\\) DO UPDATE SET hostname = EXCLUDED.hostname, ip = EXCLUDED.ip, os = EXCLUDED.os, last_seen = EXCLUDED.last_seen, tags = EXCLUDED.tags").
 			WillReturnError(fmt.Errorf("insert failed"))
 
 		hostInfo := &pb.HostInfo{
@@ -2452,8 +2448,8 @@ func TestConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
-// TestRegisterWithHardwareFingerprint tests registration with hardware fingerprinting
-func TestRegisterWithHardwareFingerprint(t *testing.T) {
+// TestStreamCommandsWithStatusUpdates tests handling of command status updates through the stream
+func TestStreamCommandsWithStatusUpdates(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("Failed to create mock database: %v", err)
@@ -2462,144 +2458,61 @@ func TestRegisterWithHardwareFingerprint(t *testing.T) {
 
 	server := createTestServer(db)
 
-	testMinionID := "test-minion"
-	testHostname := "test-host"
-	testIP := "192.168.1.100"
-	testOS := "linux"
-	testFingerprint := "abc123def456"
-
-	hostInfo := &pb.HostInfo{
-		Id:                  testMinionID,
-		Hostname:            testHostname,
-		Ip:                  testIP,
-		Os:                  testOS,
-		Tags:                make(map[string]string),
-		HardwareFingerprint: testFingerprint,
+	// Add test minion
+	minionID := "test-minion"
+	server.GetMinionRegistryImpl().minions[minionID] = &MinionConnectionImpl{
+		Info:      &pb.HostInfo{Id: minionID},
+		CommandCh: make(chan *pb.Command, 10),
+		LastSeen:  time.Now(),
 	}
 
-	// Mock database operations
-	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags, hardware_fingerprint\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7, \\$8\\)").
-		WithArgs(testMinionID, testHostname, testIP, testOS, sqlmock.AnyArg(), sqlmock.AnyArg(), "{}", testFingerprint).
+	// Mock database operations for status update
+	mock.ExpectExec("UPDATE commands SET status = \\$1 WHERE id = \\$2").
+		WithArgs("EXECUTING", "cmd-123").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	// Expect registration history record
-	mock.ExpectExec("INSERT INTO registration_history \\(host_id, registration_type, details\\) VALUES \\(\\$1, \\$2, \\$3\\)").
-		WithArgs(testMinionID, "REGISTRATION", sqlmock.AnyArg()).
+	mock.ExpectExec("UPDATE commands SET status = \\$1 WHERE id = \\$2").
+		WithArgs("COMPLETED", "cmd-123").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	response, err := server.Register(context.Background(), hostInfo)
-	if err != nil {
-		t.Fatalf("Register failed: %v", err)
-	}
-
-	if !response.Success {
-		t.Error("Expected registration to succeed")
-	}
-
-	// Verify registration history
-	if response.RegistrationHistory == nil {
-		t.Error("Expected registration history to be initialized")
-	} else {
-		if len(response.RegistrationHistory.Registrations) != 1 {
-			t.Error("Expected one registration entry")
-		}
-		if response.RegistrationHistory.RegistrationCount != 1 {
-			t.Errorf("Expected registration count 1, got %d", response.RegistrationHistory.RegistrationCount)
-		}
-	}
-
-	// Verify in-memory state
-	registry := server.GetMinionRegistryImpl()
-	registry.minionsMu.RLock()
-	conn, exists := registry.minions[testMinionID]
-	registry.minionsMu.RUnlock()
-
-	if !exists {
-		t.Fatal("Expected minion to be stored in memory")
-	}
-
-	if conn.Info.HardwareFingerprint != testFingerprint {
-		t.Errorf("Expected hardware fingerprint %s, got %s", testFingerprint, conn.Info.HardwareFingerprint)
-	}
-
-	// Verify fingerprint map
-	if existingID := registry.fingerprintMap[testFingerprint]; existingID != testMinionID {
-		t.Errorf("Expected fingerprint map entry %s, got %s", testMinionID, existingID)
-	}
-}
-
-// TestRegisterWithConflict tests registration conflict detection
-func TestRegisterWithConflict(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("Failed to create mock database: %v", err)
-	}
-	defer db.Close()
-
-	server := createTestServer(db)
-	registry := server.GetMinionRegistryImpl()
-
-	// Register first minion
-	existingID := "existing-minion"
-	existingFingerprint := "abc123"
-	registry.minions[existingID] = &MinionConnectionImpl{
-		Info: &pb.HostInfo{
-			Id:                  existingID,
-			Hostname:            "host1",
-			Ip:                  "192.168.1.100",
-			HardwareFingerprint: existingFingerprint,
-			RegistrationHistory: &pb.RegistrationHistory{
-				Registrations:     make([]*pb.RegistrationHistory_Registration, 0),
-				Conflicts:         make([]*pb.RegistrationHistory_Conflict, 0),
-				RegistrationCount: 1,
+	// Create test messages
+	recvMsgs := []*pb.CommandStreamMessage{
+		{
+			Message: &pb.CommandStreamMessage_Status{
+				Status: &pb.CommandStatusUpdate{
+					CommandId: "cmd-123",
+					MinionId:  minionID,
+					Status:    "EXECUTING",
+					Timestamp: time.Now().Unix(),
+				},
+			},
+		},
+		{
+			Message: &pb.CommandStreamMessage_Status{
+				Status: &pb.CommandStatusUpdate{
+					CommandId: "cmd-123",
+					MinionId:  minionID,
+					Status:    "COMPLETED",
+					Timestamp: time.Now().Unix(),
+				},
 			},
 		},
 	}
-	registry.fingerprintMap[existingFingerprint] = existingID
 
-	// Try to register new minion with same fingerprint
-	newID := "new-minion"
-	hostInfo := &pb.HostInfo{
-		Id:                  newID,
-		Hostname:            "host2",
-		Ip:                  "192.168.1.101",
-		Os:                  "linux",
-		HardwareFingerprint: existingFingerprint,
+	md := metadata.New(map[string]string{"minion-id": minionID})
+	ctx := metadata.NewIncomingContext(context.Background(), md)
+
+	stream := &MockStreamServer{
+		ctx:      ctx,
+		recvMsgs: recvMsgs,
 	}
 
-	// Expect conflict to be recorded in registration history
-	mock.ExpectExec("INSERT INTO registration_history \\(host_id, registration_type, details\\) VALUES \\(\\$1, \\$2, \\$3\\)").
-		WithArgs(existingID, "CONFLICT", sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-
-	response, err := server.Register(context.Background(), hostInfo)
-	if err != nil {
-		t.Fatalf("Register failed: %v", err)
+	err = server.StreamCommands(stream)
+	if err != nil && err != io.EOF {
+		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if response.Success {
-		t.Error("Expected registration to fail due to conflict")
-	}
-
-	if response.ConflictStatus != "pending" {
-		t.Errorf("Expected conflict status 'pending', got '%s'", response.ConflictStatus)
-	}
-
-	if response.ConflictDetails["type"] != "hardware_mismatch" {
-		t.Errorf("Expected conflict type 'hardware_mismatch', got '%s'", response.ConflictDetails["type"])
-	}
-
-	if response.ConflictDetails["existing_id"] != existingID {
-		t.Errorf("Expected existing ID '%s', got '%s'", existingID, response.ConflictDetails["existing_id"])
-	}
-
-	// Verify conflict was recorded in existing minion's history
-	existingConn := registry.minions[existingID]
-	if len(existingConn.Info.RegistrationHistory.Conflicts) != 1 {
-		t.Error("Expected conflict to be recorded in history")
-	}
-
-	// Verify all database expectations were met
+	// Verify database expectations were met
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("Unfulfilled mock expectations: %v", err)
 	}

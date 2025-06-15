@@ -139,8 +139,8 @@ func (cp *commandProcessor) CanHandle(cmd *pb.Command) bool {
 	return result
 }
 
-// ProcessCommands handles the main command processing loop
-func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.MinionService_GetCommandsClient, resultSender func(*pb.CommandResult) error) error {
+// ProcessCommands handles the main command processing loop using bidirectional streaming
+func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.MinionService_StreamCommandsClient) error {
 	logger, start := logging.FuncLogger(cp.logger, "commandProcessor.ProcessCommands")
 	defer logging.FuncExit(logger, start)
 
@@ -152,8 +152,8 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 
 		// Use a goroutine to make stream.Recv() interruptible
 		type recvResult struct {
-			command *pb.Command
-			err     error
+			msg *pb.CommandStreamMessage
+			err error
 		}
 
 		recvCh := make(chan recvResult, 1)
@@ -163,27 +163,22 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 			defer logging.FuncExit(recvLogger, recvStart)
 
 			recvLogger.Debug("About to call stream.Recv()")
-			cmd, err := stream.Recv()
+			msg, err := stream.Recv()
 
 			if err != nil {
-				recvLogger.Debug("stream.Recv() returned with error",
-					zap.Error(err))
-			} else {
-				recvLogger.Debug("stream.Recv() returned",
-					zap.Bool("has_command", cmd != nil))
-			}
-
-			if cmd != nil {
+				recvLogger.Debug("stream.Recv() returned with error", zap.Error(err))
+			} else if msg != nil && msg.GetCommand() != nil {
+				cmd := msg.GetCommand()
 				recvLogger.Debug("Received command details",
 					zap.String("command_id", cmd.Id),
 					zap.String("payload", cmd.Payload),
 					zap.String("type", cmd.Type.String()))
 			}
-			recvCh <- recvResult{command: cmd, err: err}
+			recvCh <- recvResult{msg: msg, err: err}
 		}()
 
 		// Wait for command with timeout and cancellation support
-		var command *pb.Command
+		var msg *pb.CommandStreamMessage
 		var err error
 
 		select {
@@ -191,73 +186,61 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 			logger.Debug("Context cancelled, stopping command loop")
 			return ctx.Err()
 		case result := <-recvCh:
-			if result.command == nil && result.err == nil {
-				logger.Debug("Received command from stream",
-					zap.String("command_id", result.command.Id),
-					zap.String("payload", result.command.Payload),
-					zap.String("command_type", result.command.Type.String()))
-			} else {
-				logger.Debug("Received command with error")
-			}
-			command = result.command
+			msg = result.msg
 			err = result.err
 		case <-time.After(90 * time.Second):
 			logger.Debug("stream.Recv() timeout after 90s, checking stream health")
-			// Don't immediately disconnect - try a quick health check first
 			select {
 			case <-ctx.Done():
 				logger.Debug("Context cancelled during health check")
 				return ctx.Err()
 			default:
-				// Stream might still be healthy, just no commands pending
 				logger.Debug("Stream timeout but context still active, continuing...")
 				continue
 			}
 		}
 
 		if err != nil {
-			logger.Error("Error receiving command",
-				zap.String("error_type", fmt.Sprintf("%T", err)))
-
-			// Check if it's a context cancellation
+			logger.Error("Error receiving command", zap.String("error_type", fmt.Sprintf("%T", err)))
 			if ctx.Err() != nil {
 				logger.Debug("Context cancelled, stopping command loop")
 				return ctx.Err()
 			}
-
-			// Return error to trigger reconnection
 			return err
 		}
 
-		// Extract sequence number from metadata if available and store in our tracking map
+		command := msg.GetCommand()
+		if command == nil {
+			logger.Debug("Received non-command message, skipping")
+			continue
+		}
+
+		// Extract sequence number from metadata
 		seqNum := "unknown"
 		if command.Metadata != nil {
 			if seq, ok := command.Metadata["seq_num"]; ok {
 				seqNum = seq
-				// Store sequence number in our map for tracking
 				cp.commandSeqMutex.Lock()
 				cp.commandSeqNums[command.Id] = seq
 				cp.commandSeqMutex.Unlock()
 			}
 		}
 
-		logger.Debug("Received command",
+		logger.Debug("Processing command",
 			zap.String("command_id", command.Id),
 			zap.String("payload", command.Payload),
 			zap.String("command_type", command.Type.String()),
 			zap.String("seq_num", seqNum))
 
-		// Update command status through gRPC
-		if err := cp.updateCommandStatus(ctx, command.Id, "RECEIVED"); err != nil {
-			logger.Error("Failed to update command status to RECEIVED",
-				zap.String("command_id", command.Id),
-				zap.Error(err))
+		// Send status updates through stream
+		if err := cp.sendStatusUpdate(stream, command.Id, "RECEIVED"); err != nil {
+			logger.Error("Failed to send RECEIVED status", zap.Error(err))
+			return err
 		}
 
-		if err := cp.updateCommandStatus(ctx, command.Id, "EXECUTING"); err != nil {
-			logger.Error("Failed to update command status to EXECUTING",
-				zap.String("command_id", command.Id),
-				zap.Error(err))
+		if err := cp.sendStatusUpdate(stream, command.Id, "EXECUTING"); err != nil {
+			logger.Error("Failed to send EXECUTING status", zap.Error(err))
+			return err
 		}
 
 		// Execute command
@@ -265,58 +248,60 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 		if err != nil {
 			logger.Error("Error executing command",
 				zap.String("command_id", command.Id),
-				zap.String("payload", command.Payload),
 				zap.Error(err))
-
-			// Send failure result
 			result.ExitCode = 1
 			result.Stderr = err.Error()
 		}
 
-		// Retrieve the sequence number from our tracking map
-		cp.commandSeqMutex.RLock()
-		seqNum, ok := cp.commandSeqNums[command.Id]
-		if !ok {
-			seqNum = "unknown"
-		}
-		cp.commandSeqMutex.RUnlock()
-
-		// Send command result using the provided sender function
-		logger.Debug("About to send command result",
-			zap.String("command_id", command.Id),
-			zap.String("minion_id", cp.id),
-			zap.Int32("exit_code", result.ExitCode),
-			zap.String("stdout", result.Stdout),
-			zap.String("seq_num", seqNum))
-
-		if err := resultSender(result); err != nil {
-			logger.Error("Error sending command result",
-				zap.String("command_id", command.Id),
-				zap.String("minion_id", cp.id))
-		} else {
-			logger.Info("Successfully sent command result using sender function",
-				zap.String("command_id", command.Id),
-				zap.String("minion_id", cp.id),
-				zap.Int32("exit_code", result.ExitCode),
-				zap.String("seq_num", seqNum))
-
-			// Update final command status through gRPC
-			status := "COMPLETED"
-			if result.ExitCode != 0 {
-				status = "FAILED"
-			}
-			if err := cp.updateCommandStatus(ctx, command.Id, status); err != nil {
-				logger.Error("Failed to update final command status",
-					zap.String("command_id", command.Id),
-					zap.String("status", status),
-					zap.Error(err))
-			}
+		// Send command result through stream
+		if err := cp.sendCommandResult(stream, result); err != nil {
+			logger.Error("Failed to send command result", zap.Error(err))
+			return err
 		}
 
-		logger.Debug("Command processing loop iteration completed",
+		// Send final status
+		status := "COMPLETED"
+		if result.ExitCode != 0 {
+			status = "FAILED"
+		}
+		if err := cp.sendStatusUpdate(stream, command.Id, status); err != nil {
+			logger.Error("Failed to send final status", zap.Error(err))
+			return err
+		}
+
+		logger.Debug("Command processing completed",
 			zap.Duration("iteration_time", time.Since(loopStart)),
 			zap.String("command_id", command.Id))
 	}
+}
+
+// sendStatusUpdate sends a status update through the stream
+func (cp *commandProcessor) sendStatusUpdate(stream pb.MinionService_StreamCommandsClient, commandID, status string) error {
+	update := &pb.CommandStatusUpdate{
+		CommandId: commandID,
+		MinionId:  cp.id,
+		Status:    status,
+		Timestamp: time.Now().Unix(),
+	}
+
+	msg := &pb.CommandStreamMessage{
+		Message: &pb.CommandStreamMessage_Status{
+			Status: update,
+		},
+	}
+
+	return stream.Send(msg)
+}
+
+// sendCommandResult sends a command result through the stream
+func (cp *commandProcessor) sendCommandResult(stream pb.MinionService_StreamCommandsClient, result *pb.CommandResult) error {
+	msg := &pb.CommandStreamMessage{
+		Message: &pb.CommandStreamMessage_Result{
+			Result: result,
+		},
+	}
+
+	return stream.Send(msg)
 }
 
 // UpdateMinionID updates the minion ID used for command results
@@ -329,17 +314,4 @@ func (cp *commandProcessor) UpdateMinionID(newID string) {
 		zap.String("new_id", newID))
 
 	cp.id = newID
-}
-
-// updateCommandStatus sends a command status update through gRPC
-func (cp *commandProcessor) updateCommandStatus(ctx context.Context, commandID string, status string) error {
-	update := &pb.CommandStatusUpdate{
-		CommandId: commandID,
-		MinionId:  cp.id,
-		Status:    status,
-		Timestamp: time.Now().Unix(),
-	}
-
-	_, err := cp.service.UpdateCommandStatus(ctx, update)
-	return err
 }

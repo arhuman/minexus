@@ -28,7 +28,6 @@ type Minion struct {
 	// New component interfaces
 	connectionMgr    ConnectionManager
 	commandProcessor CommandExecutor
-	resultSender     ResultSender
 	registrationMgr  RegistrationManager
 }
 
@@ -40,7 +39,6 @@ func NewMinion(id string, service pb.MinionServiceClient, heartbeatInterval time
 	// Create component instances
 	connectionMgr := NewConnectionManager(id, service, reconnectMgr, logger)
 	commandProcessor := NewCommandProcessor(id, registry, &atom, service, logger)
-	resultSender := NewResultSender(service, logger)
 	registrationMgr := NewRegistrationManager(id, service, connectionMgr, logger)
 
 	return &Minion{
@@ -54,7 +52,6 @@ func NewMinion(id string, service pb.MinionServiceClient, heartbeatInterval time
 		registry:          registry,
 		connectionMgr:     connectionMgr,
 		commandProcessor:  commandProcessor,
-		resultSender:      resultSender,
 		registrationMgr:   registrationMgr,
 	}
 }
@@ -130,9 +127,7 @@ func (m *Minion) run(ctx context.Context) {
 		}
 
 		// Process commands until error or disconnection
-		err = m.commandProcessor.(*commandProcessor).ProcessCommands(ctx, stream, func(result *pb.CommandResult) error {
-			return m.resultSender.Send(ctx, result)
-		})
+		err = m.commandProcessor.(*commandProcessor).ProcessCommands(ctx, stream)
 
 		if err != nil && ctx.Err() == nil {
 			m.logger.Debug("Command processing ended, will reconnect", zap.Error(err))

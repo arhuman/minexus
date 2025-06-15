@@ -68,18 +68,15 @@ func (CommandType) EnumDescriptor() ([]byte, []int) {
 }
 
 type HostInfo struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	Id                  string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Hostname            string                 `protobuf:"bytes,2,opt,name=hostname,proto3" json:"hostname,omitempty"`
-	Ip                  string                 `protobuf:"bytes,3,opt,name=ip,proto3" json:"ip,omitempty"`
-	Os                  string                 `protobuf:"bytes,4,opt,name=os,proto3" json:"os,omitempty"`
-	Tags                map[string]string      `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	LastSeen            int64                  `protobuf:"varint,6,opt,name=last_seen,json=lastSeen,proto3" json:"last_seen,omitempty"`                                 // Unix timestamp of last registration/communication
-	HardwareFingerprint string                 `protobuf:"bytes,7,opt,name=hardware_fingerprint,json=hardwareFingerprint,proto3" json:"hardware_fingerprint,omitempty"` // Unique hardware identifier
-	RegistrationHistory *RegistrationHistory   `protobuf:"bytes,8,opt,name=registration_history,json=registrationHistory,proto3" json:"registration_history,omitempty"`
-	ConflictStatus      string                 `protobuf:"bytes,9,opt,name=conflict_status,json=conflictStatus,proto3" json:"conflict_status,omitempty"` // null, "pending", "resolved", "manual_review"
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Hostname      string                 `protobuf:"bytes,2,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	Ip            string                 `protobuf:"bytes,3,opt,name=ip,proto3" json:"ip,omitempty"`
+	Os            string                 `protobuf:"bytes,4,opt,name=os,proto3" json:"os,omitempty"`
+	Tags          map[string]string      `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	LastSeen      int64                  `protobuf:"varint,6,opt,name=last_seen,json=lastSeen,proto3" json:"last_seen,omitempty"` // Unix timestamp of last registration/communication
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *HostInfo) Reset() {
@@ -154,95 +151,6 @@ func (x *HostInfo) GetLastSeen() int64 {
 	return 0
 }
 
-func (x *HostInfo) GetHardwareFingerprint() string {
-	if x != nil {
-		return x.HardwareFingerprint
-	}
-	return ""
-}
-
-func (x *HostInfo) GetRegistrationHistory() *RegistrationHistory {
-	if x != nil {
-		return x.RegistrationHistory
-	}
-	return nil
-}
-
-func (x *HostInfo) GetConflictStatus() string {
-	if x != nil {
-		return x.ConflictStatus
-	}
-	return ""
-}
-
-type RegistrationHistory struct {
-	state             protoimpl.MessageState              `protogen:"open.v1"`
-	Registrations     []*RegistrationHistory_Registration `protobuf:"bytes,1,rep,name=registrations,proto3" json:"registrations,omitempty"`
-	Conflicts         []*RegistrationHistory_Conflict     `protobuf:"bytes,2,rep,name=conflicts,proto3" json:"conflicts,omitempty"`
-	FirstSeen         int64                               `protobuf:"varint,3,opt,name=first_seen,json=firstSeen,proto3" json:"first_seen,omitempty"`
-	RegistrationCount int32                               `protobuf:"varint,4,opt,name=registration_count,json=registrationCount,proto3" json:"registration_count,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
-}
-
-func (x *RegistrationHistory) Reset() {
-	*x = RegistrationHistory{}
-	mi := &file_minexus_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RegistrationHistory) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RegistrationHistory) ProtoMessage() {}
-
-func (x *RegistrationHistory) ProtoReflect() protoreflect.Message {
-	mi := &file_minexus_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RegistrationHistory.ProtoReflect.Descriptor instead.
-func (*RegistrationHistory) Descriptor() ([]byte, []int) {
-	return file_minexus_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *RegistrationHistory) GetRegistrations() []*RegistrationHistory_Registration {
-	if x != nil {
-		return x.Registrations
-	}
-	return nil
-}
-
-func (x *RegistrationHistory) GetConflicts() []*RegistrationHistory_Conflict {
-	if x != nil {
-		return x.Conflicts
-	}
-	return nil
-}
-
-func (x *RegistrationHistory) GetFirstSeen() int64 {
-	if x != nil {
-		return x.FirstSeen
-	}
-	return 0
-}
-
-func (x *RegistrationHistory) GetRegistrationCount() int32 {
-	if x != nil {
-		return x.RegistrationCount
-	}
-	return 0
-}
-
 type Command struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -255,7 +163,7 @@ type Command struct {
 
 func (x *Command) Reset() {
 	*x = Command{}
-	mi := &file_minexus_proto_msgTypes[2]
+	mi := &file_minexus_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -267,7 +175,7 @@ func (x *Command) String() string {
 func (*Command) ProtoMessage() {}
 
 func (x *Command) ProtoReflect() protoreflect.Message {
-	mi := &file_minexus_proto_msgTypes[2]
+	mi := &file_minexus_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -280,7 +188,7 @@ func (x *Command) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Command.ProtoReflect.Descriptor instead.
 func (*Command) Descriptor() ([]byte, []int) {
-	return file_minexus_proto_rawDescGZIP(), []int{2}
+	return file_minexus_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Command) GetId() string {
@@ -325,7 +233,7 @@ type CommandResult struct {
 
 func (x *CommandResult) Reset() {
 	*x = CommandResult{}
-	mi := &file_minexus_proto_msgTypes[3]
+	mi := &file_minexus_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -337,7 +245,7 @@ func (x *CommandResult) String() string {
 func (*CommandResult) ProtoMessage() {}
 
 func (x *CommandResult) ProtoReflect() protoreflect.Message {
-	mi := &file_minexus_proto_msgTypes[3]
+	mi := &file_minexus_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -350,7 +258,7 @@ func (x *CommandResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandResult.ProtoReflect.Descriptor instead.
 func (*CommandResult) Descriptor() ([]byte, []int) {
-	return file_minexus_proto_rawDescGZIP(), []int{3}
+	return file_minexus_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *CommandResult) GetCommandId() string {
@@ -404,7 +312,7 @@ type Ack struct {
 
 func (x *Ack) Reset() {
 	*x = Ack{}
-	mi := &file_minexus_proto_msgTypes[4]
+	mi := &file_minexus_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -416,7 +324,7 @@ func (x *Ack) String() string {
 func (*Ack) ProtoMessage() {}
 
 func (x *Ack) ProtoReflect() protoreflect.Message {
-	mi := &file_minexus_proto_msgTypes[4]
+	mi := &file_minexus_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -429,7 +337,7 @@ func (x *Ack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ack.ProtoReflect.Descriptor instead.
 func (*Ack) Descriptor() ([]byte, []int) {
-	return file_minexus_proto_rawDescGZIP(), []int{4}
+	return file_minexus_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Ack) GetSuccess() bool {
@@ -447,7 +355,7 @@ type Empty struct {
 
 func (x *Empty) Reset() {
 	*x = Empty{}
-	mi := &file_minexus_proto_msgTypes[5]
+	mi := &file_minexus_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -459,7 +367,7 @@ func (x *Empty) String() string {
 func (*Empty) ProtoMessage() {}
 
 func (x *Empty) ProtoReflect() protoreflect.Message {
-	mi := &file_minexus_proto_msgTypes[5]
+	mi := &file_minexus_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -472,7 +380,7 @@ func (x *Empty) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Empty.ProtoReflect.Descriptor instead.
 func (*Empty) Descriptor() ([]byte, []int) {
-	return file_minexus_proto_rawDescGZIP(), []int{5}
+	return file_minexus_proto_rawDescGZIP(), []int{4}
 }
 
 type SetTagsRequest struct {
@@ -485,7 +393,7 @@ type SetTagsRequest struct {
 
 func (x *SetTagsRequest) Reset() {
 	*x = SetTagsRequest{}
-	mi := &file_minexus_proto_msgTypes[6]
+	mi := &file_minexus_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -497,7 +405,7 @@ func (x *SetTagsRequest) String() string {
 func (*SetTagsRequest) ProtoMessage() {}
 
 func (x *SetTagsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_minexus_proto_msgTypes[6]
+	mi := &file_minexus_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -510,7 +418,7 @@ func (x *SetTagsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetTagsRequest.ProtoReflect.Descriptor instead.
 func (*SetTagsRequest) Descriptor() ([]byte, []int) {
-	return file_minexus_proto_rawDescGZIP(), []int{6}
+	return file_minexus_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SetTagsRequest) GetMinionId() string {
@@ -538,7 +446,7 @@ type UpdateTagsRequest struct {
 
 func (x *UpdateTagsRequest) Reset() {
 	*x = UpdateTagsRequest{}
-	mi := &file_minexus_proto_msgTypes[7]
+	mi := &file_minexus_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -550,7 +458,7 @@ func (x *UpdateTagsRequest) String() string {
 func (*UpdateTagsRequest) ProtoMessage() {}
 
 func (x *UpdateTagsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_minexus_proto_msgTypes[7]
+	mi := &file_minexus_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -563,7 +471,7 @@ func (x *UpdateTagsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateTagsRequest.ProtoReflect.Descriptor instead.
 func (*UpdateTagsRequest) Descriptor() ([]byte, []int) {
-	return file_minexus_proto_rawDescGZIP(), []int{7}
+	return file_minexus_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *UpdateTagsRequest) GetMinionId() string {
@@ -596,7 +504,7 @@ type TagList struct {
 
 func (x *TagList) Reset() {
 	*x = TagList{}
-	mi := &file_minexus_proto_msgTypes[8]
+	mi := &file_minexus_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -608,7 +516,7 @@ func (x *TagList) String() string {
 func (*TagList) ProtoMessage() {}
 
 func (x *TagList) ProtoReflect() protoreflect.Message {
-	mi := &file_minexus_proto_msgTypes[8]
+	mi := &file_minexus_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -621,7 +529,7 @@ func (x *TagList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagList.ProtoReflect.Descriptor instead.
 func (*TagList) Descriptor() ([]byte, []int) {
-	return file_minexus_proto_rawDescGZIP(), []int{8}
+	return file_minexus_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *TagList) GetTags() []string {
@@ -646,7 +554,7 @@ type TagMatch struct {
 
 func (x *TagMatch) Reset() {
 	*x = TagMatch{}
-	mi := &file_minexus_proto_msgTypes[9]
+	mi := &file_minexus_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -658,7 +566,7 @@ func (x *TagMatch) String() string {
 func (*TagMatch) ProtoMessage() {}
 
 func (x *TagMatch) ProtoReflect() protoreflect.Message {
-	mi := &file_minexus_proto_msgTypes[9]
+	mi := &file_minexus_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -671,7 +579,7 @@ func (x *TagMatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagMatch.ProtoReflect.Descriptor instead.
 func (*TagMatch) Descriptor() ([]byte, []int) {
-	return file_minexus_proto_rawDescGZIP(), []int{9}
+	return file_minexus_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *TagMatch) GetKey() string {
@@ -746,7 +654,7 @@ type TagSelector struct {
 
 func (x *TagSelector) Reset() {
 	*x = TagSelector{}
-	mi := &file_minexus_proto_msgTypes[10]
+	mi := &file_minexus_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -758,7 +666,7 @@ func (x *TagSelector) String() string {
 func (*TagSelector) ProtoMessage() {}
 
 func (x *TagSelector) ProtoReflect() protoreflect.Message {
-	mi := &file_minexus_proto_msgTypes[10]
+	mi := &file_minexus_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -771,12 +679,72 @@ func (x *TagSelector) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagSelector.ProtoReflect.Descriptor instead.
 func (*TagSelector) Descriptor() ([]byte, []int) {
-	return file_minexus_proto_rawDescGZIP(), []int{10}
+	return file_minexus_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *TagSelector) GetRules() []*TagMatch {
 	if x != nil {
 		return x.Rules
+	}
+	return nil
+}
+
+type CommandStatusResponse struct {
+	state         protoimpl.MessageState                `protogen:"open.v1"`
+	CommandId     string                                `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	Statuses      []*CommandStatusResponse_MinionStatus `protobuf:"bytes,2,rep,name=statuses,proto3" json:"statuses,omitempty"`
+	StatusCounts  map[string]int32                      `protobuf:"bytes,3,rep,name=status_counts,json=statusCounts,proto3" json:"status_counts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"` // Count of minions in each status
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommandStatusResponse) Reset() {
+	*x = CommandStatusResponse{}
+	mi := &file_minexus_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommandStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommandStatusResponse) ProtoMessage() {}
+
+func (x *CommandStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_minexus_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommandStatusResponse.ProtoReflect.Descriptor instead.
+func (*CommandStatusResponse) Descriptor() ([]byte, []int) {
+	return file_minexus_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *CommandStatusResponse) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *CommandStatusResponse) GetStatuses() []*CommandStatusResponse_MinionStatus {
+	if x != nil {
+		return x.Statuses
+	}
+	return nil
+}
+
+func (x *CommandStatusResponse) GetStatusCounts() map[string]int32 {
+	if x != nil {
+		return x.StatusCounts
 	}
 	return nil
 }
@@ -1095,15 +1063,12 @@ func (x *CommandStatusUpdate) GetTimestamp() int64 {
 }
 
 type RegisterResponse struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	Success             bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	AssignedId          string                 `protobuf:"bytes,2,opt,name=assigned_id,json=assignedId,proto3" json:"assigned_id,omitempty"`
-	ConflictStatus      string                 `protobuf:"bytes,3,opt,name=conflict_status,json=conflictStatus,proto3" json:"conflict_status,omitempty"`
-	RegistrationHistory *RegistrationHistory   `protobuf:"bytes,4,opt,name=registration_history,json=registrationHistory,proto3" json:"registration_history,omitempty"`
-	ErrorMessage        string                 `protobuf:"bytes,5,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
-	ConflictDetails     map[string]string      `protobuf:"bytes,6,rep,name=conflict_details,json=conflictDetails,proto3" json:"conflict_details,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	AssignedId    string                 `protobuf:"bytes,2,opt,name=assigned_id,json=assignedId,proto3" json:"assigned_id,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RegisterResponse) Reset() {
@@ -1150,32 +1115,11 @@ func (x *RegisterResponse) GetAssignedId() string {
 	return ""
 }
 
-func (x *RegisterResponse) GetConflictStatus() string {
-	if x != nil {
-		return x.ConflictStatus
-	}
-	return ""
-}
-
-func (x *RegisterResponse) GetRegistrationHistory() *RegistrationHistory {
-	if x != nil {
-		return x.RegistrationHistory
-	}
-	return nil
-}
-
 func (x *RegisterResponse) GetErrorMessage() string {
 	if x != nil {
 		return x.ErrorMessage
 	}
 	return ""
-}
-
-func (x *RegisterResponse) GetConflictDetails() map[string]string {
-	if x != nil {
-		return x.ConflictDetails
-	}
-	return nil
 }
 
 type MinionInfo struct {
@@ -1222,107 +1166,33 @@ func (x *MinionInfo) GetId() string {
 	return ""
 }
 
-type RegistrationHistory_Registration struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	Timestamp           int64                  `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Id                  string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
-	Ip                  string                 `protobuf:"bytes,3,opt,name=ip,proto3" json:"ip,omitempty"`
-	Hostname            string                 `protobuf:"bytes,4,opt,name=hostname,proto3" json:"hostname,omitempty"`
-	HardwareFingerprint string                 `protobuf:"bytes,5,opt,name=hardware_fingerprint,json=hardwareFingerprint,proto3" json:"hardware_fingerprint,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
-}
-
-func (x *RegistrationHistory_Registration) Reset() {
-	*x = RegistrationHistory_Registration{}
-	mi := &file_minexus_proto_msgTypes[20]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RegistrationHistory_Registration) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RegistrationHistory_Registration) ProtoMessage() {}
-
-func (x *RegistrationHistory_Registration) ProtoReflect() protoreflect.Message {
-	mi := &file_minexus_proto_msgTypes[20]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RegistrationHistory_Registration.ProtoReflect.Descriptor instead.
-func (*RegistrationHistory_Registration) Descriptor() ([]byte, []int) {
-	return file_minexus_proto_rawDescGZIP(), []int{1, 0}
-}
-
-func (x *RegistrationHistory_Registration) GetTimestamp() int64 {
-	if x != nil {
-		return x.Timestamp
-	}
-	return 0
-}
-
-func (x *RegistrationHistory_Registration) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
-}
-
-func (x *RegistrationHistory_Registration) GetIp() string {
-	if x != nil {
-		return x.Ip
-	}
-	return ""
-}
-
-func (x *RegistrationHistory_Registration) GetHostname() string {
-	if x != nil {
-		return x.Hostname
-	}
-	return ""
-}
-
-func (x *RegistrationHistory_Registration) GetHardwareFingerprint() string {
-	if x != nil {
-		return x.HardwareFingerprint
-	}
-	return ""
-}
-
-type RegistrationHistory_Conflict struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Timestamp     int64                  `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`             // "duplicate_id", "duplicate_hostname", "hardware_mismatch"
-	Resolution    string                 `protobuf:"bytes,3,opt,name=resolution,proto3" json:"resolution,omitempty"` // "auto_reassign", "manual", "pending"
-	Details       map[string]string      `protobuf:"bytes,4,rep,name=details,proto3" json:"details,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+type CommandStreamMessage struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Message:
+	//
+	//	*CommandStreamMessage_Command
+	//	*CommandStreamMessage_Result
+	//	*CommandStreamMessage_Status
+	Message       isCommandStreamMessage_Message `protobuf_oneof:"message"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *RegistrationHistory_Conflict) Reset() {
-	*x = RegistrationHistory_Conflict{}
-	mi := &file_minexus_proto_msgTypes[21]
+func (x *CommandStreamMessage) Reset() {
+	*x = CommandStreamMessage{}
+	mi := &file_minexus_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *RegistrationHistory_Conflict) String() string {
+func (x *CommandStreamMessage) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RegistrationHistory_Conflict) ProtoMessage() {}
+func (*CommandStreamMessage) ProtoMessage() {}
 
-func (x *RegistrationHistory_Conflict) ProtoReflect() protoreflect.Message {
-	mi := &file_minexus_proto_msgTypes[21]
+func (x *CommandStreamMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_minexus_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1333,77 +1203,140 @@ func (x *RegistrationHistory_Conflict) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RegistrationHistory_Conflict.ProtoReflect.Descriptor instead.
-func (*RegistrationHistory_Conflict) Descriptor() ([]byte, []int) {
-	return file_minexus_proto_rawDescGZIP(), []int{1, 1}
+// Deprecated: Use CommandStreamMessage.ProtoReflect.Descriptor instead.
+func (*CommandStreamMessage) Descriptor() ([]byte, []int) {
+	return file_minexus_proto_rawDescGZIP(), []int{19}
 }
 
-func (x *RegistrationHistory_Conflict) GetTimestamp() int64 {
+func (x *CommandStreamMessage) GetMessage() isCommandStreamMessage_Message {
+	if x != nil {
+		return x.Message
+	}
+	return nil
+}
+
+func (x *CommandStreamMessage) GetCommand() *Command {
+	if x != nil {
+		if x, ok := x.Message.(*CommandStreamMessage_Command); ok {
+			return x.Command
+		}
+	}
+	return nil
+}
+
+func (x *CommandStreamMessage) GetResult() *CommandResult {
+	if x != nil {
+		if x, ok := x.Message.(*CommandStreamMessage_Result); ok {
+			return x.Result
+		}
+	}
+	return nil
+}
+
+func (x *CommandStreamMessage) GetStatus() *CommandStatusUpdate {
+	if x != nil {
+		if x, ok := x.Message.(*CommandStreamMessage_Status); ok {
+			return x.Status
+		}
+	}
+	return nil
+}
+
+type isCommandStreamMessage_Message interface {
+	isCommandStreamMessage_Message()
+}
+
+type CommandStreamMessage_Command struct {
+	Command *Command `protobuf:"bytes,1,opt,name=command,proto3,oneof"` // Nexus -> Minion: New command to execute
+}
+
+type CommandStreamMessage_Result struct {
+	Result *CommandResult `protobuf:"bytes,2,opt,name=result,proto3,oneof"` // Minion -> Nexus: Result of executed command
+}
+
+type CommandStreamMessage_Status struct {
+	Status *CommandStatusUpdate `protobuf:"bytes,3,opt,name=status,proto3,oneof"` // Minion -> Nexus: Status update for command
+}
+
+func (*CommandStreamMessage_Command) isCommandStreamMessage_Message() {}
+
+func (*CommandStreamMessage_Result) isCommandStreamMessage_Message() {}
+
+func (*CommandStreamMessage_Status) isCommandStreamMessage_Message() {}
+
+type CommandStatusResponse_MinionStatus struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MinionId      string                 `protobuf:"bytes,1,opt,name=minion_id,json=minionId,proto3" json:"minion_id,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"` // "PENDING", "RECEIVED", "EXECUTING", "COMPLETED", "FAILED"
+	Timestamp     int64                  `protobuf:"varint,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommandStatusResponse_MinionStatus) Reset() {
+	*x = CommandStatusResponse_MinionStatus{}
+	mi := &file_minexus_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommandStatusResponse_MinionStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommandStatusResponse_MinionStatus) ProtoMessage() {}
+
+func (x *CommandStatusResponse_MinionStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_minexus_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommandStatusResponse_MinionStatus.ProtoReflect.Descriptor instead.
+func (*CommandStatusResponse_MinionStatus) Descriptor() ([]byte, []int) {
+	return file_minexus_proto_rawDescGZIP(), []int{10, 0}
+}
+
+func (x *CommandStatusResponse_MinionStatus) GetMinionId() string {
+	if x != nil {
+		return x.MinionId
+	}
+	return ""
+}
+
+func (x *CommandStatusResponse_MinionStatus) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *CommandStatusResponse_MinionStatus) GetTimestamp() int64 {
 	if x != nil {
 		return x.Timestamp
 	}
 	return 0
-}
-
-func (x *RegistrationHistory_Conflict) GetType() string {
-	if x != nil {
-		return x.Type
-	}
-	return ""
-}
-
-func (x *RegistrationHistory_Conflict) GetResolution() string {
-	if x != nil {
-		return x.Resolution
-	}
-	return ""
-}
-
-func (x *RegistrationHistory_Conflict) GetDetails() map[string]string {
-	if x != nil {
-		return x.Details
-	}
-	return nil
 }
 
 var File_minexus_proto protoreflect.FileDescriptor
 
 const file_minexus_proto_rawDesc = "" +
 	"\n" +
-	"\rminexus.proto\x12\aminexus\"\x8a\x03\n" +
+	"\rminexus.proto\x12\aminexus\"\xdd\x01\n" +
 	"\bHostInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x0e\n" +
 	"\x02ip\x18\x03 \x01(\tR\x02ip\x12\x0e\n" +
 	"\x02os\x18\x04 \x01(\tR\x02os\x12/\n" +
 	"\x04tags\x18\x05 \x03(\v2\x1b.minexus.HostInfo.TagsEntryR\x04tags\x12\x1b\n" +
-	"\tlast_seen\x18\x06 \x01(\x03R\blastSeen\x121\n" +
-	"\x14hardware_fingerprint\x18\a \x01(\tR\x13hardwareFingerprint\x12O\n" +
-	"\x14registration_history\x18\b \x01(\v2\x1c.minexus.RegistrationHistoryR\x13registrationHistory\x12'\n" +
-	"\x0fconflict_status\x18\t \x01(\tR\x0econflictStatus\x1a7\n" +
+	"\tlast_seen\x18\x06 \x01(\x03R\blastSeen\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x80\x05\n" +
-	"\x13RegistrationHistory\x12O\n" +
-	"\rregistrations\x18\x01 \x03(\v2).minexus.RegistrationHistory.RegistrationR\rregistrations\x12C\n" +
-	"\tconflicts\x18\x02 \x03(\v2%.minexus.RegistrationHistory.ConflictR\tconflicts\x12\x1d\n" +
-	"\n" +
-	"first_seen\x18\x03 \x01(\x03R\tfirstSeen\x12-\n" +
-	"\x12registration_count\x18\x04 \x01(\x05R\x11registrationCount\x1a\x9b\x01\n" +
-	"\fRegistration\x12\x1c\n" +
-	"\ttimestamp\x18\x01 \x01(\x03R\ttimestamp\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\x12\x0e\n" +
-	"\x02ip\x18\x03 \x01(\tR\x02ip\x12\x1a\n" +
-	"\bhostname\x18\x04 \x01(\tR\bhostname\x121\n" +
-	"\x14hardware_fingerprint\x18\x05 \x01(\tR\x13hardwareFingerprint\x1a\xe6\x01\n" +
-	"\bConflict\x12\x1c\n" +
-	"\ttimestamp\x18\x01 \x01(\x03R\ttimestamp\x12\x12\n" +
-	"\x04type\x18\x02 \x01(\tR\x04type\x12\x1e\n" +
-	"\n" +
-	"resolution\x18\x03 \x01(\tR\n" +
-	"resolution\x12L\n" +
-	"\adetails\x18\x04 \x03(\v22.minexus.RegistrationHistory.Conflict.DetailsEntryR\adetails\x1a:\n" +
-	"\fDetailsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd6\x01\n" +
 	"\aCommand\x12\x0e\n" +
@@ -1449,7 +1382,19 @@ const file_minexus_proto_rawDesc = "" +
 	"not_exists\x18\x04 \x01(\bH\x00R\tnotExistsB\v\n" +
 	"\tcondition\"6\n" +
 	"\vTagSelector\x12'\n" +
-	"\x05rules\x18\x01 \x03(\v2\x11.minexus.TagMatchR\x05rules\"9\n" +
+	"\x05rules\x18\x01 \x03(\v2\x11.minexus.TagMatchR\x05rules\"\xfa\x02\n" +
+	"\x15CommandStatusResponse\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\x12G\n" +
+	"\bstatuses\x18\x02 \x03(\v2+.minexus.CommandStatusResponse.MinionStatusR\bstatuses\x12U\n" +
+	"\rstatus_counts\x18\x03 \x03(\v20.minexus.CommandStatusResponse.StatusCountsEntryR\fstatusCounts\x1aa\n" +
+	"\fMinionStatus\x12\x1b\n" +
+	"\tminion_id\x18\x01 \x01(\tR\bminionId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x1c\n" +
+	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp\x1a?\n" +
+	"\x11StatusCountsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"9\n" +
 	"\n" +
 	"MinionList\x12+\n" +
 	"\aminions\x18\x01 \x03(\v2\x11.minexus.HostInfoR\aminions\"\x94\x01\n" +
@@ -1472,25 +1417,24 @@ const file_minexus_proto_rawDesc = "" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1b\n" +
 	"\tminion_id\x18\x02 \x01(\tR\bminionId\x12\x16\n" +
 	"\x06status\x18\x03 \x01(\tR\x06status\x12\x1c\n" +
-	"\ttimestamp\x18\x04 \x01(\x03R\ttimestamp\"\x8b\x03\n" +
+	"\ttimestamp\x18\x04 \x01(\x03R\ttimestamp\"r\n" +
 	"\x10RegisterResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1f\n" +
 	"\vassigned_id\x18\x02 \x01(\tR\n" +
-	"assignedId\x12'\n" +
-	"\x0fconflict_status\x18\x03 \x01(\tR\x0econflictStatus\x12O\n" +
-	"\x14registration_history\x18\x04 \x01(\v2\x1c.minexus.RegistrationHistoryR\x13registrationHistory\x12#\n" +
-	"\rerror_message\x18\x05 \x01(\tR\ferrorMessage\x12Y\n" +
-	"\x10conflict_details\x18\x06 \x03(\v2..minexus.RegisterResponse.ConflictDetailsEntryR\x0fconflictDetails\x1aB\n" +
-	"\x14ConflictDetailsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x1c\n" +
+	"assignedId\x12#\n" +
+	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\"\x1c\n" +
 	"\n" +
 	"MinionInfo\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id*'\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\xb9\x01\n" +
+	"\x14CommandStreamMessage\x12,\n" +
+	"\acommand\x18\x01 \x01(\v2\x10.minexus.CommandH\x00R\acommand\x120\n" +
+	"\x06result\x18\x02 \x01(\v2\x16.minexus.CommandResultH\x00R\x06result\x126\n" +
+	"\x06status\x18\x03 \x01(\v2\x1c.minexus.CommandStatusUpdateH\x00R\x06statusB\t\n" +
+	"\amessage*'\n" +
 	"\vCommandType\x12\n" +
 	"\n" +
 	"\x06SYSTEM\x10\x00\x12\f\n" +
-	"\bINTERNAL\x10\x012\xec\x02\n" +
+	"\bINTERNAL\x10\x012\xb8\x03\n" +
 	"\x0eConsoleService\x122\n" +
 	"\vListMinions\x12\x0e.minexus.Empty\x1a\x13.minexus.MinionList\x12,\n" +
 	"\bListTags\x12\x0e.minexus.Empty\x1a\x10.minexus.TagList\x120\n" +
@@ -1498,12 +1442,11 @@ const file_minexus_proto_rawDesc = "" +
 	"\n" +
 	"UpdateTags\x12\x1a.minexus.UpdateTagsRequest\x1a\f.minexus.Ack\x12H\n" +
 	"\vSendCommand\x12\x17.minexus.CommandRequest\x1a .minexus.CommandDispatchResponse\x12D\n" +
-	"\x11GetCommandResults\x12\x16.minexus.ResultRequest\x1a\x17.minexus.CommandResults2\xfa\x01\n" +
+	"\x11GetCommandResults\x12\x16.minexus.ResultRequest\x1a\x17.minexus.CommandResults\x12J\n" +
+	"\x10GetCommandStatus\x12\x16.minexus.ResultRequest\x1a\x1e.minexus.CommandStatusResponse2\x9d\x01\n" +
 	"\rMinionService\x128\n" +
-	"\bRegister\x12\x11.minexus.HostInfo\x1a\x19.minexus.RegisterResponse\x121\n" +
-	"\vGetCommands\x12\x0e.minexus.Empty\x1a\x10.minexus.Command0\x01\x129\n" +
-	"\x11SendCommandResult\x12\x16.minexus.CommandResult\x1a\f.minexus.Ack\x12A\n" +
-	"\x13UpdateCommandStatus\x12\x1c.minexus.CommandStatusUpdate\x1a\f.minexus.AckB\x15Z\x13minexus/proto;protob\x06proto3"
+	"\bRegister\x12\x11.minexus.HostInfo\x1a\x19.minexus.RegisterResponse\x12R\n" +
+	"\x0eStreamCommands\x12\x1d.minexus.CommandStreamMessage\x1a\x1d.minexus.CommandStreamMessage(\x010\x01B\x15Z\x13minexus/proto;protob\x06proto3"
 
 var (
 	file_minexus_proto_rawDescOnce sync.Once
@@ -1518,79 +1461,75 @@ func file_minexus_proto_rawDescGZIP() []byte {
 }
 
 var file_minexus_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_minexus_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_minexus_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_minexus_proto_goTypes = []any{
-	(CommandType)(0),                         // 0: minexus.CommandType
-	(*HostInfo)(nil),                         // 1: minexus.HostInfo
-	(*RegistrationHistory)(nil),              // 2: minexus.RegistrationHistory
-	(*Command)(nil),                          // 3: minexus.Command
-	(*CommandResult)(nil),                    // 4: minexus.CommandResult
-	(*Ack)(nil),                              // 5: minexus.Ack
-	(*Empty)(nil),                            // 6: minexus.Empty
-	(*SetTagsRequest)(nil),                   // 7: minexus.SetTagsRequest
-	(*UpdateTagsRequest)(nil),                // 8: minexus.UpdateTagsRequest
-	(*TagList)(nil),                          // 9: minexus.TagList
-	(*TagMatch)(nil),                         // 10: minexus.TagMatch
-	(*TagSelector)(nil),                      // 11: minexus.TagSelector
-	(*MinionList)(nil),                       // 12: minexus.MinionList
-	(*CommandRequest)(nil),                   // 13: minexus.CommandRequest
-	(*CommandDispatchResponse)(nil),          // 14: minexus.CommandDispatchResponse
-	(*ResultRequest)(nil),                    // 15: minexus.ResultRequest
-	(*CommandResults)(nil),                   // 16: minexus.CommandResults
-	(*CommandStatusUpdate)(nil),              // 17: minexus.CommandStatusUpdate
-	(*RegisterResponse)(nil),                 // 18: minexus.RegisterResponse
-	(*MinionInfo)(nil),                       // 19: minexus.MinionInfo
-	nil,                                      // 20: minexus.HostInfo.TagsEntry
-	(*RegistrationHistory_Registration)(nil), // 21: minexus.RegistrationHistory.Registration
-	(*RegistrationHistory_Conflict)(nil),     // 22: minexus.RegistrationHistory.Conflict
-	nil,                                      // 23: minexus.RegistrationHistory.Conflict.DetailsEntry
-	nil,                                      // 24: minexus.Command.MetadataEntry
-	nil,                                      // 25: minexus.SetTagsRequest.TagsEntry
-	nil,                                      // 26: minexus.UpdateTagsRequest.AddEntry
-	nil,                                      // 27: minexus.RegisterResponse.ConflictDetailsEntry
+	(CommandType)(0),                // 0: minexus.CommandType
+	(*HostInfo)(nil),                // 1: minexus.HostInfo
+	(*Command)(nil),                 // 2: minexus.Command
+	(*CommandResult)(nil),           // 3: minexus.CommandResult
+	(*Ack)(nil),                     // 4: minexus.Ack
+	(*Empty)(nil),                   // 5: minexus.Empty
+	(*SetTagsRequest)(nil),          // 6: minexus.SetTagsRequest
+	(*UpdateTagsRequest)(nil),       // 7: minexus.UpdateTagsRequest
+	(*TagList)(nil),                 // 8: minexus.TagList
+	(*TagMatch)(nil),                // 9: minexus.TagMatch
+	(*TagSelector)(nil),             // 10: minexus.TagSelector
+	(*CommandStatusResponse)(nil),   // 11: minexus.CommandStatusResponse
+	(*MinionList)(nil),              // 12: minexus.MinionList
+	(*CommandRequest)(nil),          // 13: minexus.CommandRequest
+	(*CommandDispatchResponse)(nil), // 14: minexus.CommandDispatchResponse
+	(*ResultRequest)(nil),           // 15: minexus.ResultRequest
+	(*CommandResults)(nil),          // 16: minexus.CommandResults
+	(*CommandStatusUpdate)(nil),     // 17: minexus.CommandStatusUpdate
+	(*RegisterResponse)(nil),        // 18: minexus.RegisterResponse
+	(*MinionInfo)(nil),              // 19: minexus.MinionInfo
+	(*CommandStreamMessage)(nil),    // 20: minexus.CommandStreamMessage
+	nil,                             // 21: minexus.HostInfo.TagsEntry
+	nil,                             // 22: minexus.Command.MetadataEntry
+	nil,                             // 23: minexus.SetTagsRequest.TagsEntry
+	nil,                             // 24: minexus.UpdateTagsRequest.AddEntry
+	(*CommandStatusResponse_MinionStatus)(nil), // 25: minexus.CommandStatusResponse.MinionStatus
+	nil, // 26: minexus.CommandStatusResponse.StatusCountsEntry
 }
 var file_minexus_proto_depIdxs = []int32{
-	20, // 0: minexus.HostInfo.tags:type_name -> minexus.HostInfo.TagsEntry
-	2,  // 1: minexus.HostInfo.registration_history:type_name -> minexus.RegistrationHistory
-	21, // 2: minexus.RegistrationHistory.registrations:type_name -> minexus.RegistrationHistory.Registration
-	22, // 3: minexus.RegistrationHistory.conflicts:type_name -> minexus.RegistrationHistory.Conflict
-	0,  // 4: minexus.Command.type:type_name -> minexus.CommandType
-	24, // 5: minexus.Command.metadata:type_name -> minexus.Command.MetadataEntry
-	25, // 6: minexus.SetTagsRequest.tags:type_name -> minexus.SetTagsRequest.TagsEntry
-	26, // 7: minexus.UpdateTagsRequest.add:type_name -> minexus.UpdateTagsRequest.AddEntry
-	10, // 8: minexus.TagSelector.rules:type_name -> minexus.TagMatch
-	1,  // 9: minexus.MinionList.minions:type_name -> minexus.HostInfo
-	11, // 10: minexus.CommandRequest.tag_selector:type_name -> minexus.TagSelector
-	3,  // 11: minexus.CommandRequest.command:type_name -> minexus.Command
-	4,  // 12: minexus.CommandResults.results:type_name -> minexus.CommandResult
-	2,  // 13: minexus.RegisterResponse.registration_history:type_name -> minexus.RegistrationHistory
-	27, // 14: minexus.RegisterResponse.conflict_details:type_name -> minexus.RegisterResponse.ConflictDetailsEntry
-	23, // 15: minexus.RegistrationHistory.Conflict.details:type_name -> minexus.RegistrationHistory.Conflict.DetailsEntry
-	6,  // 16: minexus.ConsoleService.ListMinions:input_type -> minexus.Empty
-	6,  // 17: minexus.ConsoleService.ListTags:input_type -> minexus.Empty
-	7,  // 18: minexus.ConsoleService.SetTags:input_type -> minexus.SetTagsRequest
-	8,  // 19: minexus.ConsoleService.UpdateTags:input_type -> minexus.UpdateTagsRequest
-	13, // 20: minexus.ConsoleService.SendCommand:input_type -> minexus.CommandRequest
-	15, // 21: minexus.ConsoleService.GetCommandResults:input_type -> minexus.ResultRequest
+	21, // 0: minexus.HostInfo.tags:type_name -> minexus.HostInfo.TagsEntry
+	0,  // 1: minexus.Command.type:type_name -> minexus.CommandType
+	22, // 2: minexus.Command.metadata:type_name -> minexus.Command.MetadataEntry
+	23, // 3: minexus.SetTagsRequest.tags:type_name -> minexus.SetTagsRequest.TagsEntry
+	24, // 4: minexus.UpdateTagsRequest.add:type_name -> minexus.UpdateTagsRequest.AddEntry
+	9,  // 5: minexus.TagSelector.rules:type_name -> minexus.TagMatch
+	25, // 6: minexus.CommandStatusResponse.statuses:type_name -> minexus.CommandStatusResponse.MinionStatus
+	26, // 7: minexus.CommandStatusResponse.status_counts:type_name -> minexus.CommandStatusResponse.StatusCountsEntry
+	1,  // 8: minexus.MinionList.minions:type_name -> minexus.HostInfo
+	10, // 9: minexus.CommandRequest.tag_selector:type_name -> minexus.TagSelector
+	2,  // 10: minexus.CommandRequest.command:type_name -> minexus.Command
+	3,  // 11: minexus.CommandResults.results:type_name -> minexus.CommandResult
+	2,  // 12: minexus.CommandStreamMessage.command:type_name -> minexus.Command
+	3,  // 13: minexus.CommandStreamMessage.result:type_name -> minexus.CommandResult
+	17, // 14: minexus.CommandStreamMessage.status:type_name -> minexus.CommandStatusUpdate
+	5,  // 15: minexus.ConsoleService.ListMinions:input_type -> minexus.Empty
+	5,  // 16: minexus.ConsoleService.ListTags:input_type -> minexus.Empty
+	6,  // 17: minexus.ConsoleService.SetTags:input_type -> minexus.SetTagsRequest
+	7,  // 18: minexus.ConsoleService.UpdateTags:input_type -> minexus.UpdateTagsRequest
+	13, // 19: minexus.ConsoleService.SendCommand:input_type -> minexus.CommandRequest
+	15, // 20: minexus.ConsoleService.GetCommandResults:input_type -> minexus.ResultRequest
+	15, // 21: minexus.ConsoleService.GetCommandStatus:input_type -> minexus.ResultRequest
 	1,  // 22: minexus.MinionService.Register:input_type -> minexus.HostInfo
-	6,  // 23: minexus.MinionService.GetCommands:input_type -> minexus.Empty
-	4,  // 24: minexus.MinionService.SendCommandResult:input_type -> minexus.CommandResult
-	17, // 25: minexus.MinionService.UpdateCommandStatus:input_type -> minexus.CommandStatusUpdate
-	12, // 26: minexus.ConsoleService.ListMinions:output_type -> minexus.MinionList
-	9,  // 27: minexus.ConsoleService.ListTags:output_type -> minexus.TagList
-	5,  // 28: minexus.ConsoleService.SetTags:output_type -> minexus.Ack
-	5,  // 29: minexus.ConsoleService.UpdateTags:output_type -> minexus.Ack
-	14, // 30: minexus.ConsoleService.SendCommand:output_type -> minexus.CommandDispatchResponse
-	16, // 31: minexus.ConsoleService.GetCommandResults:output_type -> minexus.CommandResults
-	18, // 32: minexus.MinionService.Register:output_type -> minexus.RegisterResponse
-	3,  // 33: minexus.MinionService.GetCommands:output_type -> minexus.Command
-	5,  // 34: minexus.MinionService.SendCommandResult:output_type -> minexus.Ack
-	5,  // 35: minexus.MinionService.UpdateCommandStatus:output_type -> minexus.Ack
-	26, // [26:36] is the sub-list for method output_type
-	16, // [16:26] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	20, // 23: minexus.MinionService.StreamCommands:input_type -> minexus.CommandStreamMessage
+	12, // 24: minexus.ConsoleService.ListMinions:output_type -> minexus.MinionList
+	8,  // 25: minexus.ConsoleService.ListTags:output_type -> minexus.TagList
+	4,  // 26: minexus.ConsoleService.SetTags:output_type -> minexus.Ack
+	4,  // 27: minexus.ConsoleService.UpdateTags:output_type -> minexus.Ack
+	14, // 28: minexus.ConsoleService.SendCommand:output_type -> minexus.CommandDispatchResponse
+	16, // 29: minexus.ConsoleService.GetCommandResults:output_type -> minexus.CommandResults
+	11, // 30: minexus.ConsoleService.GetCommandStatus:output_type -> minexus.CommandStatusResponse
+	18, // 31: minexus.MinionService.Register:output_type -> minexus.RegisterResponse
+	20, // 32: minexus.MinionService.StreamCommands:output_type -> minexus.CommandStreamMessage
+	24, // [24:33] is the sub-list for method output_type
+	15, // [15:24] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_minexus_proto_init() }
@@ -1598,10 +1537,15 @@ func file_minexus_proto_init() {
 	if File_minexus_proto != nil {
 		return
 	}
-	file_minexus_proto_msgTypes[9].OneofWrappers = []any{
+	file_minexus_proto_msgTypes[8].OneofWrappers = []any{
 		(*TagMatch_Equals)(nil),
 		(*TagMatch_Exists)(nil),
 		(*TagMatch_NotExists)(nil),
+	}
+	file_minexus_proto_msgTypes[19].OneofWrappers = []any{
+		(*CommandStreamMessage_Command)(nil),
+		(*CommandStreamMessage_Result)(nil),
+		(*CommandStreamMessage_Status)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1609,7 +1553,7 @@ func file_minexus_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_minexus_proto_rawDesc), len(file_minexus_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   27,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

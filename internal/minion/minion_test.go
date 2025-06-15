@@ -17,10 +17,8 @@ import (
 
 // Mock implementation of MinionServiceClient
 type mockMinionServiceClient struct {
-	registerFunc          func(ctx context.Context, in *pb.HostInfo, opts ...grpc.CallOption) (*pb.RegisterResponse, error)
-	getCommandsFunc       func(ctx context.Context, in *pb.Empty, opts ...grpc.CallOption) (pb.MinionService_GetCommandsClient, error)
-	sendCommandResultFunc func(ctx context.Context, in *pb.CommandResult, opts ...grpc.CallOption) (*pb.Ack, error)
-	updateStatusFunc      func(ctx context.Context, in *pb.CommandStatusUpdate, opts ...grpc.CallOption) (*pb.Ack, error)
+	registerFunc       func(ctx context.Context, in *pb.HostInfo, opts ...grpc.CallOption) (*pb.RegisterResponse, error)
+	streamCommandsFunc func(ctx context.Context, opts ...grpc.CallOption) (pb.MinionService_StreamCommandsClient, error)
 }
 
 func (m *mockMinionServiceClient) Register(ctx context.Context, in *pb.HostInfo, opts ...grpc.CallOption) (*pb.RegisterResponse, error) {
@@ -30,81 +28,98 @@ func (m *mockMinionServiceClient) Register(ctx context.Context, in *pb.HostInfo,
 	return &pb.RegisterResponse{Success: true, AssignedId: in.Id}, nil
 }
 
-func (m *mockMinionServiceClient) GetCommands(ctx context.Context, in *pb.Empty, opts ...grpc.CallOption) (pb.MinionService_GetCommandsClient, error) {
-	if m.getCommandsFunc != nil {
-		return m.getCommandsFunc(ctx, in, opts...)
+func (m *mockMinionServiceClient) StreamCommands(ctx context.Context, opts ...grpc.CallOption) (pb.MinionService_StreamCommandsClient, error) {
+	if m.streamCommandsFunc != nil {
+		return m.streamCommandsFunc(ctx, opts...)
 	}
-	return &mockGetCommandsClient{}, nil
+	return &mockStreamCommandsClient{}, nil
 }
 
-func (m *mockMinionServiceClient) SendCommandResult(ctx context.Context, in *pb.CommandResult, opts ...grpc.CallOption) (*pb.Ack, error) {
-	if m.sendCommandResultFunc != nil {
-		return m.sendCommandResultFunc(ctx, in, opts...)
-	}
-	return &pb.Ack{Success: true}, nil
+// Mock implementation of StreamCommands stream client
+type mockStreamCommandsClient struct {
+	commands     []*pb.Command
+	index        int
+	closed       bool
+	recvMsgs     []*pb.CommandStreamMessage
+	sendMsgs     []*pb.CommandStreamMessage
+	recvCallback func(*pb.CommandStreamMessage) error
+	sendCallback func(*pb.CommandStreamMessage) error
 }
 
-func (m *mockMinionServiceClient) UpdateCommandStatus(ctx context.Context, in *pb.CommandStatusUpdate, opts ...grpc.CallOption) (*pb.Ack, error) {
-	if m.updateStatusFunc != nil {
-		return m.updateStatusFunc(ctx, in, opts...)
-	}
-	return &pb.Ack{Success: true}, nil
-}
-
-// mockGetCommandsClientWithCommand implements pb.MinionService_GetCommandsClient with a single command
-type mockGetCommandsClientWithCommand struct {
-	mockGetCommandsClient
-	command *pb.Command
-	sent    bool
-}
-
-func (m *mockGetCommandsClientWithCommand) Recv() (*pb.Command, error) {
-	if !m.sent {
-		m.sent = true
-		return m.command, nil
-	}
-	return nil, io.EOF
-}
-
-// Mock implementation of GetCommands stream client
-type mockGetCommandsClient struct {
-	commands []*pb.Command
-	index    int
-	closed   bool
-}
-
-func (m *mockGetCommandsClient) Recv() (*pb.Command, error) {
+func (m *mockStreamCommandsClient) Recv() (*pb.CommandStreamMessage, error) {
 	if m.closed || m.index >= len(m.commands) {
 		return nil, io.EOF
 	}
-	cmd := m.commands[m.index]
+	msg := &pb.CommandStreamMessage{
+		Message: &pb.CommandStreamMessage_Command{
+			Command: m.commands[m.index],
+		},
+	}
 	m.index++
-	return cmd, nil
+	if m.recvCallback != nil {
+		if err := m.recvCallback(msg); err != nil {
+			return nil, err
+		}
+	}
+	m.recvMsgs = append(m.recvMsgs, msg)
+	return msg, nil
 }
 
-func (m *mockGetCommandsClient) Header() (metadata.MD, error) {
+func (m *mockStreamCommandsClient) Send(msg *pb.CommandStreamMessage) error {
+	if m.closed {
+		return errors.New("stream closed")
+	}
+	if m.sendCallback != nil {
+		if err := m.sendCallback(msg); err != nil {
+			return err
+		}
+	}
+	m.sendMsgs = append(m.sendMsgs, msg)
+	return nil
+}
+
+func (m *mockStreamCommandsClient) Header() (metadata.MD, error) {
 	return metadata.MD{}, nil
 }
 
-func (m *mockGetCommandsClient) Trailer() metadata.MD {
+func (m *mockStreamCommandsClient) Trailer() metadata.MD {
 	return metadata.MD{}
 }
 
-func (m *mockGetCommandsClient) CloseSend() error {
+func (m *mockStreamCommandsClient) CloseSend() error {
 	m.closed = true
 	return nil
 }
 
-func (m *mockGetCommandsClient) Context() context.Context {
+func (m *mockStreamCommandsClient) Context() context.Context {
 	return context.Background()
 }
 
-func (m *mockGetCommandsClient) SendMsg(msg interface{}) error {
+func (m *mockStreamCommandsClient) SendMsg(msg interface{}) error {
 	return nil
 }
 
-func (m *mockGetCommandsClient) RecvMsg(msg interface{}) error {
+func (m *mockStreamCommandsClient) RecvMsg(msg interface{}) error {
 	return nil
+}
+
+// mockStreamCommandsClientWithCommand implements pb.MinionService_StreamCommandsClient with a single command
+type mockStreamCommandsClientWithCommand struct {
+	mockStreamCommandsClient
+	command *pb.Command
+	sent    bool
+}
+
+func (m *mockStreamCommandsClientWithCommand) Recv() (*pb.CommandStreamMessage, error) {
+	if !m.sent {
+		m.sent = true
+		return &pb.CommandStreamMessage{
+			Message: &pb.CommandStreamMessage_Command{
+				Command: m.command,
+			},
+		}, nil
+	}
+	return nil, io.EOF
 }
 
 func TestNewMinion(t *testing.T) {
@@ -133,7 +148,7 @@ func TestMinionRegistration(t *testing.T) {
 			// Accept any initial ID since it can be "test-minion" or "assigned-id"
 			return &pb.RegisterResponse{Success: true, AssignedId: "assigned-id"}, nil
 		},
-		getCommandsFunc: func(ctx context.Context, in *pb.Empty, opts ...grpc.CallOption) (pb.MinionService_GetCommandsClient, error) {
+		streamCommandsFunc: func(ctx context.Context, opts ...grpc.CallOption) (pb.MinionService_StreamCommandsClient, error) {
 			// Check if metadata contains minion ID
 			md, ok := metadata.FromOutgoingContext(ctx)
 			if !ok {
@@ -144,7 +159,7 @@ func TestMinionRegistration(t *testing.T) {
 				t.Error("Expected minion-id in metadata")
 			}
 			// The minion ID should be either the original or the assigned one
-			return &mockGetCommandsClient{closed: true}, nil
+			return &mockStreamCommandsClient{closed: true}, nil
 		},
 	}
 
@@ -314,17 +329,20 @@ func TestCommandReceiving(t *testing.T) {
 		registerFunc: func(ctx context.Context, in *pb.HostInfo, opts ...grpc.CallOption) (*pb.RegisterResponse, error) {
 			return &pb.RegisterResponse{Success: true, AssignedId: in.Id}, nil
 		},
-		getCommandsFunc: func(ctx context.Context, in *pb.Empty, opts ...grpc.CallOption) (pb.MinionService_GetCommandsClient, error) {
+		streamCommandsFunc: func(ctx context.Context, opts ...grpc.CallOption) (pb.MinionService_StreamCommandsClient, error) {
 			if !commandsSent {
 				commandsSent = true
-				return &mockGetCommandsClient{commands: commands}, nil
+				client := &mockStreamCommandsClient{commands: commands}
+				client.sendCallback = func(msg *pb.CommandStreamMessage) error {
+					if result := msg.GetResult(); result != nil {
+						receivedResults = append(receivedResults, result)
+					}
+					return nil
+				}
+				return client, nil
 			}
 			// Return a client that immediately closes to prevent infinite reconnection
-			return &mockGetCommandsClient{closed: true}, nil
-		},
-		sendCommandResultFunc: func(ctx context.Context, in *pb.CommandResult, opts ...grpc.CallOption) (*pb.Ack, error) {
-			receivedResults = append(receivedResults, in)
-			return &pb.Ack{Success: true}, nil
+			return &mockStreamCommandsClient{closed: true}, nil
 		},
 	}
 
@@ -504,7 +522,7 @@ type mockConnectionManager struct {
 func (m *mockConnectionManager) Connect(ctx context.Context) error { return nil }
 func (m *mockConnectionManager) Disconnect() error                 { return nil }
 func (m *mockConnectionManager) IsConnected() bool                 { return m.connected }
-func (m *mockConnectionManager) Stream() (pb.MinionService_GetCommandsClient, error) {
+func (m *mockConnectionManager) Stream() (pb.MinionService_StreamCommandsClient, error) {
 	return nil, nil
 }
 func (m *mockConnectionManager) HandleReconnection(ctx context.Context) error { return nil }
@@ -559,12 +577,18 @@ func TestCommandStatusUpdates(t *testing.T) {
 			var resultSent *pb.CommandResult
 
 			mockClient := &mockMinionServiceClient{
-				updateStatusFunc: func(ctx context.Context, in *pb.CommandStatusUpdate, opts ...grpc.CallOption) (*pb.Ack, error) {
-					statusUpdates = append(statusUpdates, in)
-					return &pb.Ack{Success: true}, nil
-				},
-				getCommandsFunc: func(ctx context.Context, in *pb.Empty, opts ...grpc.CallOption) (pb.MinionService_GetCommandsClient, error) {
-					return &mockGetCommandsClientWithCommand{command: tc.command}, nil
+				streamCommandsFunc: func(ctx context.Context, opts ...grpc.CallOption) (pb.MinionService_StreamCommandsClient, error) {
+					client := &mockStreamCommandsClientWithCommand{command: tc.command}
+					client.sendCallback = func(msg *pb.CommandStreamMessage) error {
+						switch m := msg.Message.(type) {
+						case *pb.CommandStreamMessage_Status:
+							statusUpdates = append(statusUpdates, m.Status)
+						case *pb.CommandStreamMessage_Result:
+							resultSent = m.Result
+						}
+						return nil
+					}
+					return client, nil
 				},
 			}
 
@@ -574,12 +598,8 @@ func TestCommandStatusUpdates(t *testing.T) {
 
 			// Start command processing
 			processor := minion.commandProcessor.(*commandProcessor)
-			stream, _ := mockClient.GetCommands(context.Background(), &pb.Empty{})
-
-			err := processor.ProcessCommands(context.Background(), stream, func(result *pb.CommandResult) error {
-				resultSent = result
-				return nil
-			})
+			stream, _ := mockClient.StreamCommands(context.Background())
+			err := processor.ProcessCommands(context.Background(), stream)
 
 			if err != nil && err != io.EOF {
 				t.Errorf("Unexpected error: %v", err)
@@ -640,12 +660,31 @@ func TestCommandStatusUpdateRPCFailure(t *testing.T) {
 		Payload: "echo test",
 	}
 
+	// Create a channel to track message sending
+	msgCh := make(chan *pb.CommandStreamMessage, 10)
+
 	mockClient := &mockMinionServiceClient{
-		updateStatusFunc: func(ctx context.Context, in *pb.CommandStatusUpdate, opts ...grpc.CallOption) (*pb.Ack, error) {
-			return nil, errors.New("RPC failed")
-		},
-		getCommandsFunc: func(ctx context.Context, in *pb.Empty, opts ...grpc.CallOption) (pb.MinionService_GetCommandsClient, error) {
-			return &mockGetCommandsClientWithCommand{command: command}, nil
+		streamCommandsFunc: func(ctx context.Context, opts ...grpc.CallOption) (pb.MinionService_StreamCommandsClient, error) {
+			client := &mockStreamCommandsClientWithCommand{
+				command: command,
+				mockStreamCommandsClient: mockStreamCommandsClient{
+					sendCallback: func(msg *pb.CommandStreamMessage) error {
+						// Send all messages to channel for inspection
+						msgCh <- msg
+
+						switch msg.Message.(type) {
+						case *pb.CommandStreamMessage_Status:
+							// Just track the message
+							return nil
+						case *pb.CommandStreamMessage_Result:
+							resultSent = msg.GetResult()
+							return nil
+						}
+						return nil
+					},
+				},
+			}
+			return client, nil
 		},
 	}
 
@@ -655,16 +694,32 @@ func TestCommandStatusUpdateRPCFailure(t *testing.T) {
 
 	// Start command processing
 	processor := minion.commandProcessor.(*commandProcessor)
-	stream, _ := mockClient.GetCommands(context.Background(), &pb.Empty{})
+	stream, _ := mockClient.StreamCommands(context.Background())
+	err := processor.ProcessCommands(context.Background(), stream)
 
-	err := processor.ProcessCommands(context.Background(), stream, func(result *pb.CommandResult) error {
-		resultSent = result
-		return nil
-	})
-
-	// Command processing should complete even if status updates fail
+	// Command processing should complete
 	if err != nil && err != io.EOF {
 		t.Errorf("Unexpected error: %v", err)
+	}
+
+	// Collect all messages sent
+	close(msgCh)
+	var statusMsgs, resultMsgs int
+	for msg := range msgCh {
+		switch msg.Message.(type) {
+		case *pb.CommandStreamMessage_Status:
+			statusMsgs++
+		case *pb.CommandStreamMessage_Result:
+			resultMsgs++
+		}
+	}
+
+	// Verify messages were sent
+	if statusMsgs == 0 {
+		t.Error("Expected at least one status update to be attempted")
+	}
+	if resultMsgs != 1 {
+		t.Errorf("Expected exactly one result message, got %d", resultMsgs)
 	}
 
 	// Verify command result

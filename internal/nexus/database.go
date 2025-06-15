@@ -45,37 +45,7 @@ func (d *DatabaseServiceImpl) StoreHost(ctx context.Context, hostInfo *pb.HostIn
 		return nil // Graceful degradation when database is not available
 	}
 
-	// For conflicts, only record in registration_history
-	if hostInfo.ConflictStatus != "" {
-		details := map[string]string{
-			"type":                 "hardware_mismatch",
-			"resolution":           "pending",
-			"hardware_fingerprint": hostInfo.HardwareFingerprint,
-			"ip":                   hostInfo.Ip,
-			"hostname":             hostInfo.Hostname,
-			"os":                   hostInfo.Os,
-			"existing_id":          hostInfo.Id,
-		}
-		detailsJSON, err := json.Marshal(details)
-		if err != nil {
-			logger.Error("Failed to marshal conflict details", zap.String("host_id", hostInfo.Id))
-			return fmt.Errorf("failed to marshal conflict details: %v", err)
-		}
-
-		query := `INSERT INTO registration_history (host_id, registration_type, details) VALUES ($1, $2, $3)`
-		_, err = d.db.ExecContext(ctx, query, hostInfo.Id, "CONFLICT", string(detailsJSON))
-		if err != nil {
-			logger.Error("Failed to record conflict", zap.String("host_id", hostInfo.Id))
-			return fmt.Errorf("failed to store conflict: %v", err)
-		}
-
-		logger.Debug("Recorded registration conflict",
-			zap.String("host_id", hostInfo.Id),
-			zap.String("conflict_type", "hardware_mismatch"))
-		return nil
-	}
-
-	// For normal registrations, store in hosts table and registration_history
+	// Store in hosts table using simplified schema
 	tagsJSON, err := json.Marshal(hostInfo.Tags)
 	if err != nil {
 		logger.Error("Failed to marshal host tags", zap.String("host_id", hostInfo.Id))
@@ -84,43 +54,22 @@ func (d *DatabaseServiceImpl) StoreHost(ctx context.Context, hostInfo *pb.HostIn
 
 	now := time.Now()
 	_, err = d.db.ExecContext(ctx,
-		`INSERT INTO hosts (id, hostname, ip, os, first_seen, last_seen, tags, hardware_fingerprint)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`INSERT INTO hosts (id, hostname, ip, os, first_seen, last_seen, tags)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (id) DO UPDATE SET
 			hostname = EXCLUDED.hostname,
 			ip = EXCLUDED.ip,
 			os = EXCLUDED.os,
 			last_seen = EXCLUDED.last_seen,
-			tags = EXCLUDED.tags,
-			hardware_fingerprint = EXCLUDED.hardware_fingerprint`,
-		hostInfo.Id, hostInfo.Hostname, hostInfo.Ip, hostInfo.Os, now, now, string(tagsJSON), hostInfo.HardwareFingerprint)
+			tags = EXCLUDED.tags`,
+		hostInfo.Id, hostInfo.Hostname, hostInfo.Ip, hostInfo.Os, now, now, string(tagsJSON))
 
 	if err != nil {
 		logger.Error("Failed to insert host in database", zap.String("host_id", hostInfo.Id))
 		return fmt.Errorf("failed to insert host: %v", err)
 	}
 
-	// Record registration in history
-	details := map[string]interface{}{
-		"ip":                   hostInfo.Ip,
-		"hostname":             hostInfo.Hostname,
-		"hardware_fingerprint": hostInfo.HardwareFingerprint,
-	}
-	detailsJSON, err := json.Marshal(details)
-	if err != nil {
-		logger.Error("Failed to marshal registration details", zap.String("host_id", hostInfo.Id))
-		return fmt.Errorf("failed to marshal registration details: %v", err)
-	}
-
-	_, err = d.db.ExecContext(ctx,
-		"INSERT INTO registration_history (host_id, registration_type, details) VALUES ($1, $2, $3)",
-		hostInfo.Id, "REGISTRATION", string(detailsJSON))
-	if err != nil {
-		logger.Error("Failed to record registration history", zap.String("host_id", hostInfo.Id))
-		return fmt.Errorf("failed to record registration history: %v", err)
-	}
-
-	logger.Debug("Host stored successfully with registration history", zap.String("host_id", hostInfo.Id))
+	logger.Debug("Host stored successfully", zap.String("host_id", hostInfo.Id))
 	return nil
 }
 
@@ -142,8 +91,8 @@ func (d *DatabaseServiceImpl) UpdateHost(ctx context.Context, hostInfo *pb.HostI
 
 	now := time.Now()
 	result, err := d.db.ExecContext(ctx,
-		"UPDATE hosts SET hostname=$2, ip=$3, os=$4, last_seen=$5, tags=$6, hardware_fingerprint=$7 WHERE id=$1",
-		hostInfo.Id, hostInfo.Hostname, hostInfo.Ip, hostInfo.Os, now, string(tagsJSON), hostInfo.HardwareFingerprint)
+		"UPDATE hosts SET hostname=$2, ip=$3, os=$4, last_seen=$5, tags=$6 WHERE id=$1",
+		hostInfo.Id, hostInfo.Hostname, hostInfo.Ip, hostInfo.Os, now, string(tagsJSON))
 
 	if err != nil {
 		logger.Error("Failed to update host in database", zap.String("host_id", hostInfo.Id))

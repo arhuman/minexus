@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"minexus/internal/minion/fingerprint"
 	pb "minexus/protogen"
 
 	"go.uber.org/zap"
@@ -16,22 +15,20 @@ import (
 
 // registrationManager implements the RegistrationManager interface
 type registrationManager struct {
-	id                string
-	service           pb.MinionServiceClient
-	connectionMgr     ConnectionManager
-	logger            *zap.Logger
-	fingerprintGen    *fingerprint.Generator
-	registrationCount int32
+	id            string
+	service       pb.MinionServiceClient
+	connectionMgr ConnectionManager
+	logger        *zap.Logger
+	// PHASE 3: registrationCount removed - no longer tracking registration history
 }
 
 // NewRegistrationManager creates a new registration manager
 func NewRegistrationManager(id string, service pb.MinionServiceClient, connMgr ConnectionManager, logger *zap.Logger) *registrationManager {
 	return &registrationManager{
-		id:             id,
-		service:        service,
-		connectionMgr:  connMgr,
-		logger:         logger,
-		fingerprintGen: fingerprint.NewGenerator(logger),
+		id:            id,
+		service:       service,
+		connectionMgr: connMgr,
+		logger:        logger,
 	}
 }
 
@@ -56,25 +53,15 @@ func (rm *registrationManager) Register(ctx context.Context, hostInfo *pb.HostIn
 
 	if !resp.Success {
 		rm.logger.Error("Registration unsuccessful",
-			zap.String("error", resp.ErrorMessage),
-			zap.String("conflict_status", resp.ConflictStatus))
-
-		// Handle conflict status
-		if resp.ConflictStatus != "" {
-			rm.logger.Info("Registration conflict detected",
-				zap.String("status", resp.ConflictStatus),
-				zap.Any("details", resp.ConflictDetails))
-		}
+			zap.String("error", resp.ErrorMessage))
 
 		return resp, nil
 	}
 
 	rm.logger.Debug("Registration successful")
 
-	// Update registration history
-	if resp.RegistrationHistory != nil {
-		rm.registrationCount = resp.RegistrationHistory.RegistrationCount
-	}
+	// PHASE 3: Registration history tracking removed
+	rm.logger.Info("Phase3 Cleanup: Skipping registration history update")
 
 	// If server assigned a new ID, update it
 	if resp.AssignedId != "" && resp.AssignedId != rm.id {
@@ -119,68 +106,31 @@ func (rm *registrationManager) PeriodicRegister(ctx context.Context, interval ti
 
 			if !resp.Success {
 				rm.logger.Error("Periodic registration unsuccessful",
-					zap.String("error", resp.ErrorMessage),
-					zap.String("conflict_status", resp.ConflictStatus))
-
-				// Handle conflict status
-				if resp.ConflictStatus != "" {
-					rm.logger.Info("Registration conflict detected",
-						zap.String("status", resp.ConflictStatus),
-						zap.Any("details", resp.ConflictDetails))
-				}
+					zap.String("error", resp.ErrorMessage))
 				continue
 			}
 
-			// Update registration history
-			if resp.RegistrationHistory != nil {
-				rm.registrationCount = resp.RegistrationHistory.RegistrationCount
-			}
+			// PHASE 3: Registration history tracking removed
+			rm.logger.Info("Phase3 Cleanup: Skipping registration history update in periodic registration")
 
 			rm.logger.Debug("Periodic registration successful",
-				zap.String("minion_id", rm.id),
-				zap.Int32("registration_count", rm.registrationCount))
+				zap.String("minion_id", rm.id))
 		}
 	}
 }
 
 // createHostInfo creates host information for registration
 func (rm *registrationManager) createHostInfo() (*pb.HostInfo, error) {
-	// Generate hardware fingerprint
-	hwFingerprint, err := rm.fingerprintGen.Generate()
-	if err != nil {
-		return nil, err
-	}
-
-	// Create registration history if this is first registration
-	var regHistory *pb.RegistrationHistory
-	if rm.registrationCount == 0 {
-		now := time.Now().Unix()
-		regHistory = &pb.RegistrationHistory{
-			Registrations:     make([]*pb.RegistrationHistory_Registration, 0),
-			Conflicts:         make([]*pb.RegistrationHistory_Conflict, 0),
-			FirstSeen:         now,
-			RegistrationCount: 0,
-		}
-
-		// Add initial registration entry
-		initialReg := &pb.RegistrationHistory_Registration{
-			Timestamp:           now,
-			Id:                  rm.id,
-			Ip:                  rm.getIPAddress(),
-			Hostname:            getHostname(),
-			HardwareFingerprint: hwFingerprint,
-		}
-		regHistory.Registrations = append(regHistory.Registrations, initialReg)
-	}
+	// PHASE 3: Registration history creation removed
+	rm.logger.Info("Phase3 Cleanup: Skipping registration history creation in createHostInfo")
 
 	return &pb.HostInfo{
-		Id:                  rm.id,
-		Hostname:            getHostname(),
-		Ip:                  rm.getIPAddress(),
-		Os:                  runtime.GOOS,
-		Tags:                make(map[string]string),
-		HardwareFingerprint: hwFingerprint,
-		RegistrationHistory: regHistory,
+		Id:       rm.id,
+		Hostname: getHostname(),
+		Ip:       rm.getIPAddress(),
+		Os:       runtime.GOOS,
+		Tags:     make(map[string]string),
+		// PHASE 3: RegistrationHistory field removed
 	}, nil
 }
 

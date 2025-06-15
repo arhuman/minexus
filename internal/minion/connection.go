@@ -17,7 +17,7 @@ type connectionManager struct {
 	service      pb.MinionServiceClient
 	logger       *zap.Logger
 	reconnectMgr *ReconnectionManager
-	stream       pb.MinionService_GetCommandsClient
+	stream       pb.MinionService_StreamCommandsClient
 	connected    bool
 }
 
@@ -37,8 +37,8 @@ func (cm *connectionManager) Connect(ctx context.Context) error {
 	cm.logger.Debug("Attempting to get command stream", zap.String("minion_id", cm.id))
 	ctxWithMetadata := metadata.AppendToOutgoingContext(ctx, "minion-id", cm.id)
 
-	cm.logger.Debug("Calling GetCommands gRPC method")
-	stream, err := cm.service.GetCommands(ctxWithMetadata, &pb.Empty{})
+	cm.logger.Debug("Calling StreamCommands gRPC method")
+	stream, err := cm.service.StreamCommands(ctxWithMetadata)
 	if err != nil {
 		cm.logger.Error("Error getting command stream", zap.Error(err))
 		cm.connected = false
@@ -70,7 +70,7 @@ func (cm *connectionManager) IsConnected() bool {
 }
 
 // Stream returns the active command stream client for receiving commands from the nexus
-func (cm *connectionManager) Stream() (pb.MinionService_GetCommandsClient, error) {
+func (cm *connectionManager) Stream() (pb.MinionService_StreamCommandsClient, error) {
 	if !cm.IsConnected() {
 		return nil, fmt.Errorf("not connected to nexus server")
 	}
@@ -95,7 +95,7 @@ func (cm *connectionManager) HandleReconnection(ctx context.Context) error {
 	time.Sleep(delay)
 
 	ctxWithMetadata := metadata.AppendToOutgoingContext(ctx, "minion-id", cm.id)
-	stream, err := cm.service.GetCommands(ctxWithMetadata, &pb.Empty{})
+	stream, err := cm.service.StreamCommands(ctxWithMetadata)
 	if err != nil {
 		cm.logger.Error("Error reconnecting to command stream", zap.Error(err))
 		cm.stream = nil
