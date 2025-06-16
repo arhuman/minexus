@@ -1,98 +1,73 @@
 # Minexus - Distributed Command & Control System
 
-Minexus is a gRPC-based distributed command and control system with a central Nexus server, multiple Minion clients, and a Console client.
+```
+⚠️ This code is not ready for production ⚠️
+The API, features, configuration are subject to changes.
+This software lack the basic security features needed for production
+(No TLS encryption/authentication, no minions input sanitization...)
+⚠️i This code is not ready for production ⚠️
+```
+
+Minexus is a Remote Administration Tool (RAT)
+It's made of a central Nexus server, (multiple) Minion clients(s), and a Console client for administration..
+You can use it:
+- for remote deployment/execution tool (like ansible)
+- for monitoring purpose
+- for security purpose
+- ... (tell us!)
+
+It's current features include:
+
+- **gRPC Communication**: High-performance, cross-platform RPC
+- **Tag-based Targeting**: Flexible minion selection using tags
+- **Real-time Command Streaming**: Live command delivery to minions
+- **Command Result Tracking**: Complete audit trail of command execution
+- **Auto-discovery**: Minions automatically register with Nexus
+- **Zero-config Defaults**: Works immediately without configuration
+- **Flexible Configuration**: Multiple configuration methods
+- **Database Persistence**: Command history and minion registry
+
+We focus on modularity and extensibility to make it easy to add new commands.
+(more info in [ADDING_COMMANDS.md](documentation/ADDING_COMMANDS.md))
 
 ## Quick Start
 
 The system works out-of-the-box with sensible defaults - no configuration required!
 
-### Prerequisites
+The easiest way to launch one minion, a nexus server and it's associated database is through docker compose:
+`docker compose up -d`
 
-- Go 1.23.1 or later
-- PostgreSQL (optional - uses default connection if available)
+Then to attach a console:
+`docker compose exec console /app/console`
 
-### Build and Run
+## Project Structure
 
-```bash
-# Build all components
-go build -o nexus ./cmd/nexus
-go build -o minion ./cmd/minion
-go build -o console ./cmd/console
-
-# Start Nexus server (uses defaults)
-./nexus
-
-# In another terminal, start a Minion client (uses defaults)
-./minion
-
-# In another terminal, start the Console client (uses defaults)
-./console
 ```
-
-That's it! The system will use sensible defaults and work immediately.
-
-## Docker Compose Development
-
-For local development, you can use Docker Compose to launch the complete triad (nexus/minion/console) with a PostgreSQL database:
-
-### Prerequisites
-
-- Docker and Docker Compose
-- Copy `.env.example` to `.env` and configure as needed
-
-### Launch Development Environment
-
-```bash
-# Start the full development stack (nexus server + minion + database)
-docker-compose up
-
-# Start with console for interactive testing
-docker-compose --profile console up
-
-# Start only specific services
-docker-compose up nexus          # Just nexus and database
-docker-compose up nexus minion   # Nexus, minion, and database
-
-# Run in background
-docker-compose up -d
-
-# View logs
-docker-compose logs -f nexus
-docker-compose logs -f minion
-
-# Stop all services
-docker-compose down
-```
-
-### Service Overview
-
-- **nexus_db**: PostgreSQL database with automatic schema initialization
-- **nexus**: Nexus server (gRPC port 11972) with health checks
-- **minion**: Single minion client that connects to nexus automatically
-- **console**: Interactive console client (optional, use `--profile console`)
-
-The docker-compose setup includes:
-- Automatic service dependency management
-- Health checks and restart policies
-- Shared networking between services
-- Volume persistence for database
-- Environment variable configuration
-
-### Console Access
-
-The console service is configured with `stdin_open` and `tty` for interactive use:
-
-```bash
-# Start with console
-docker-compose --profile console up
-
-# Or attach to running console
-docker-compose exec console /app/console
+minexus/
+├── cmd/                   # Application entry points
+│   ├── nexus/             #   Nexus server main
+│   ├── minion/            #   Minion client main
+│   └── console/           #   Console client main
+├── internal/              # Internal packages
+│   ├── command/           #   Command implementations for minions
+│   ├── config/             #   Configuration system
+│   ├── logging/           #   Logging infrastructure
+│   ├── minion/            #   Minion client implementation
+│   ├── nexus/             #   Nexus server implementation
+│   └── version/           #   Version handling
+├── proto/                 # Protocol buffer definitions
+├── protogen/              # Generated protobuf code
+├── config/                 # Configuration files
+│   └── docker/            #   Docker configuration
+│       └── initdb/        #     Database initialization scripts
+├── documentation/         # Project documentation
+├── Makefile                # Build and development tasks
+├── docker-compose.yml     # Docker Compose configuration
+├── Dockerfile.*            # Container build files
+└── go.mod                 # Go module definition
 ```
 
 ## Configuration
-
-This document explains how to configure the Minexus system (Nexus server, Minion clients, and Console client).
 
 ### Configuration Priority
 
@@ -125,30 +100,14 @@ For detailed version handling information, see [documentation/VERSION.md](docume
               │   Minion    │ │   Minion    │ │   Minion    │
               │  Client 1   │ │  Client 2   │ │  Client N   │
               └─────────────┘ └─────────────┘ └─────────────┘
+```
 
-## Project Structure
-```
-minexus/
-├── cmd/                    # Application entry points
-│   ├── nexus/             # Nexus server main
-│   ├── minion/            # Minion client main
-│   └── console/           # Console client main
-├── internal/              # Internal packages
-│   ├── config/            # Configuration system
-│   ├── nexus/             # Nexus server implementation
-│   ├── minion/            # Minion client implementation
-│   ├── console/           # Console client implementation
-│   └── command/file       # File-related commands
-├── proto/                 # Protocol buffer definitions
-├── protogen/              # Generated protobuf code
-├── documentation/         # Project documentation
-└── config/                # Configuration files
-```
 
 ## Documentation
 
-Comprehensive documentation is available in the [`documentation/`](documentation/) directory:
+More documentation is available in the [`documentation/`](documentation/) directory:
 
+- **[ADDING_COMMANDS.md](documentation/ADDING_COMMANDS.md)** - Developer oriented guide to add commands to Minexus
 - **[CONFIGURATION.md](documentation/CONFIGURATION.md)** - Complete configuration guide for all components
 - **[VERSION.md](documentation/VERSION.md)** - Version handling, building, and querying guide
 - **[COMMANDS.md](documentation/COMMANDS.md)** - Complete guide to all minion commands
@@ -170,35 +129,92 @@ Comprehensive documentation is available in the [`documentation/`](documentation
 - [Build with Custom Versions](documentation/VERSION.md#setting-and-changing-versions) - Custom version builds
 - [Troubleshooting](documentation/CONFIGURATION.md#troubleshooting) - Common issues and solutions
 
-## Features
+## Running
 
-- **gRPC Communication**: High-performance, cross-platform RPC
-- **Tag-based Targeting**: Flexible minion selection using tags
-- **Real-time Command Streaming**: Live command delivery to minions
-- **Command Result Tracking**: Complete audit trail of command execution
-- **Auto-discovery**: Minions automatically register with Nexus
-- **Zero-config Defaults**: Works immediately without configuration
-- **Flexible Configuration**: Multiple configuration methods
-- **Database Persistence**: Command history and minion registry
+### Prerequisites
 
-### Recent Improvements (2025-06-15)
+- Docker and Docker Compose
+- Go 1.23.1 or later
+- PostgreSQL (optional - can use existing database or create/run a docker image)
 
-The Minexus system has undergone **architecture simplification** to improve reliability, performance, and maintainability:
+For development you also need
 
-- **✅ Bidirectional Streaming**: Full gRPC streaming implementation for efficient command exchange
-- **✅ Simplified Registration**: Removed complex conflict detection and registration history tracking
-- **✅ Streamlined State Management**: Eliminated unnecessary complexity 
-- **✅ Improved Performance**: Reduced memory usage and synchronization overhead
-- **✅ Enhanced Reliability**: Fewer moving parts and simplified connection handling
+- Protocol Buffers compiler (`protoc`)
+
+### Running binaries
+
+```bash
+# Build all components
+go build -o nexus ./cmd/nexus
+go build -o minion ./cmd/minion
+go build -o console ./cmd/console
+
+# Start Nexus server (uses defaults)
+nohup ./nexus > nexus.log &
+
+# In another terminal, start a Minion client (uses defaults)
+nohup ./minion > minion.log &
+
+# In another terminal, start the Console client (uses defaults)
+./console
+```
+
+That's it! The system will use sensible defaults and work immediately.
+
+## Running containers (Docker compose)
+
+For local development, you can use Docker Compose to launch the complete triad (nexus/minion/console) with a PostgreSQL database:
+
+```bash
+# Start the full development stack (nexus server + minion + database)
+docker compose up
+
+# Start with console for interactive testing
+docker compose --profile console up
+
+# Start only specific services
+docker compose up nexus          # Just nexus and database
+docker compose up nexus minion   # Nexus, minion, and database
+
+# Run in background
+docker compose up -d
+
+# View logs
+docker compose logs -f nexus
+docker compose logs -f minion
+
+# Stop all services
+docker compose down
+```
+
+### Service Overview
+
+- **nexus_db**: PostgreSQL database with automatic schema initialization
+- **nexus**: Nexus server (gRPC port 11972) with health checks
+- **minion**: Single minion client that connects to nexus automatically
+- **console**: Interactive console client (optional, use `--profile console`)
+
+The docker-compose setup includes:
+- Automatic service dependency management
+- Health checks and restart policies
+- Shared networking between services
+- Volume persistence for database
+- Environment variable configuration
+
+### Console Access
+
+The console service is configured with `stdin_open` and `tty` for interactive use:
+
+```bash
+# Start with console
+docker compose --profile console up
+
+# Or attach to running console
+docker compose exec console /app/console
+```
 
 
 ## Development
-
-### Prerequisites
-- Go 1.23.1+
-- Protocol Buffers compiler (`protoc`)
-- PostgreSQL (optional)
-- Docker and Docker Compose (for integration tests)
 
 ### Build from Source
 ```bash
@@ -243,7 +259,7 @@ SLOW_TESTS=1 make cover
 SLOW_TESTS=1 make cover-html
 ```
 
-#### Testing Best Practices
+#### Testing recommended workflow
 
 **Development Workflow:**
 - Use `make test` for frequent testing during development (fast feedback)
@@ -271,7 +287,7 @@ make release
 
 ## Contributing
 
-1. Fork the repository
+1. Fork the develop branch
 2. Create a feature branch
 3. Make your changes
 4. Add tests
@@ -279,7 +295,7 @@ make release
 
 ## License
 
-[Add your license here]
+This project is licensed under the terms of the [MIT License](LICENSE).
 
 ## Support
 
