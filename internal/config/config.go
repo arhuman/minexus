@@ -322,7 +322,7 @@ type ConsoleConfig struct {
 
 // NexusConfig holds configuration for the Nexus server
 type NexusConfig struct {
-	Port               int
+	MinionPort         int // Port for minion connections with standard TLS
 	ConsolePort        int // Port for console connections with mTLS
 	DBHost             string
 	DBPort             int
@@ -361,7 +361,7 @@ func DefaultConsoleConfig() *ConsoleConfig {
 // DefaultNexusConfig returns default configuration for Nexus
 func DefaultNexusConfig() *NexusConfig {
 	return &NexusConfig{
-		Port:        11972,
+		MinionPort:  11972,
 		ConsolePort: 11973,
 		DBHost:      "localhost",
 		DBPort:      5432,
@@ -378,7 +378,7 @@ func DefaultNexusConfig() *NexusConfig {
 // DefaultMinionConfig returns default configuration for Minion
 func DefaultMinionConfig() *MinionConfig {
 	return &MinionConfig{
-		ServerAddr:            "localhost:11972", // Will be constructed from NEXUS_SERVER + NEXUS_PORT
+		ServerAddr:            "localhost:11972", // Will be constructed from NEXUS_SERVER + NEXUS_MINION_PORT
 		ID:                    "",                // Will be auto-generated if empty
 		Debug:                 false,
 		ConnectTimeout:        3,
@@ -509,10 +509,10 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	var validationErrors []error
 
 	// Load and validate port (allow 0 for system-assigned port)
-	if port, err := loader.GetIntInRange("NEXUS_PORT", config.Port, 0, 65535); err != nil {
+	if port, err := loader.GetIntInRange("NEXUS_MINION_PORT", config.MinionPort, 0, 65535); err != nil {
 		validationErrors = append(validationErrors, err)
 	} else {
-		config.Port = port
+		config.MinionPort = port
 	}
 
 	// Load and validate console port
@@ -557,7 +557,7 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	config.FileRoot = loader.GetString("FILEROOT", config.FileRoot)
 
 	// Parse command line flags (highest priority)
-	port := flag.Int("port", config.Port, "Port to listen on")
+	minionPort := flag.Int("minion-port", config.MinionPort, "Port to listen on for minion connections")
 	consolePort := flag.Int("console-port", config.ConsolePort, "Console port for mTLS connections")
 	dbHost := flag.String("db-host", config.DBHost, "Database host")
 	dbPort := flag.Int("db-port", config.DBPort, "Database port")
@@ -575,14 +575,14 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	flag.Parse()
 
 	// Apply and validate command line flags
-	if *port < 0 || *port > 65535 {
+	if *minionPort < 0 || *minionPort > 65535 {
 		validationErrors = append(validationErrors, ValidationError{
-			Field:   "port",
-			Value:   strconv.Itoa(*port),
+			Field:   "minion-port",
+			Value:   strconv.Itoa(*minionPort),
 			Message: "must be between 0 and 65535 (0 for system-assigned)",
 		})
 	} else {
-		config.Port = *port
+		config.MinionPort = *minionPort
 	}
 
 	if *consolePort < 0 || *consolePort > 65535 {
@@ -650,7 +650,7 @@ func LoadMinionConfig() (*MinionConfig, error) {
 	}
 
 	// Load and validate nexus port
-	nexusPort, err := loader.GetIntInRange("NEXUS_PORT", 11972, 1, 65535)
+	nexusPort, err := loader.GetIntInRange("NEXUS_MINION_PORT", 11972, 1, 65535)
 	if err != nil {
 		validationErrors = append(validationErrors, err)
 	}
@@ -834,7 +834,7 @@ func (c *NexusConfig) DBConnectionString() string {
 // LogConfig logs the configuration (masks sensitive data)
 func (c *NexusConfig) LogConfig(logger *zap.Logger) {
 	logger.Info("Configuration loaded",
-		zap.Int("port", c.Port),
+		zap.Int("minion_port", c.MinionPort),
 		zap.Int("console_port", c.ConsolePort),
 		zap.String("db_host", c.DBHost),
 		zap.Int("db_port", c.DBPort),

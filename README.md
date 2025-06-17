@@ -246,9 +246,9 @@ docker compose down
 
 - **nexus_db**: PostgreSQL database with automatic schema initialization
 - **nexus**: Nexus server with dual-port architecture:
-  - **Port 11972** (`NEXUS_PORT`) - Minion connections with standard TLS
+  - **Port 11972** (`NEXUS_MINION_PORT`) - Minion connections with standard TLS
   - **Port 11973** (`NEXUS_CONSOLE_PORT`) - Console connections with mutual TLS (mTLS)
-- **minion**: Single minion client that connects to nexus using `NEXUS_SERVER` + `NEXUS_PORT`
+- **minion**: Single minion client that connects to nexus using `NEXUS_SERVER` + `NEXUS_MINION_PORT`
 - **console**: Interactive console client that connects using `NEXUS_SERVER` + `NEXUS_CONSOLE_PORT` (optional, use `--profile console`)
 
 The docker-compose setup includes:

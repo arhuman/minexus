@@ -15,7 +15,7 @@ The configuration system follows a strict priority order:
 
 Minexus uses a dual-port architecture for enhanced security:
 
-- **Port 11972** (`NEXUS_PORT`) - Standard TLS for minion connections
+- **Port 11972** (`NEXUS_MINION_PORT`) - Standard TLS for minion connections
 - **Port 11973** (`NEXUS_CONSOLE_PORT`) - Mutual TLS (mTLS) for console connections
 
 This separation ensures that:
@@ -96,7 +96,7 @@ type NexusConfig struct {
 ```
 
 **Environment Variables:**
-- `NEXUS_PORT` - Minion server port (default: 11972, range: 1-65535)
+- `NEXUS_MINION_PORT` - Minion server port (default: 11972, range: 1-65535)
 - `NEXUS_CONSOLE_PORT` - Console server port with mTLS (default: 11973, range: 1-65535)
 - `DBHOST` - Database host (default: "localhost")
 - `DBPORT` - Database port (default: 5432, range: 1-65535)
@@ -139,7 +139,7 @@ type MinionConfig struct {
 
 **Environment Variables:**
 - `NEXUS_SERVER` - Nexus server hostname (default: "localhost")
-- `NEXUS_PORT` - Nexus server port for minions (default: 11972, range: 1-65535)
+- `NEXUS_MINION_PORT` - Nexus server port for minions (default: 11972, range: 1-65535)
 - `MINION_ID` - Minion ID (optional, auto-generated if empty)
 - `DEBUG` - Enable debug mode (default: false)
 - `CONNECT_TIMEOUT` - Connection timeout (default: 3, range: 1-300)
@@ -165,7 +165,7 @@ The `.env` file supports standard environment variable format:
 ```bash
 # Nexus server configuration
 NEXUS_SERVER=nexus.example.com
-NEXUS_PORT=11972
+NEXUS_MINION_PORT=11972
 NEXUS_CONSOLE_PORT=11973
 DBHOST=database.example.com
 DBPORT=5432
@@ -223,7 +223,7 @@ Configuration errors are reported with detailed messages:
 
 ```
 Configuration validation failed:
-  - configuration validation failed for NEXUS_PORT=70000: must be between 1 and 65535
+  - configuration validation failed for NEXUS_MINION_PORT=70000: must be between 1 and 65535
   - configuration validation failed for CONNECT_TIMEOUT=invalid: must be a valid integer
   - configuration validation failed for NEXUS_SERVER=invalid-address: must be in format 'host:port'
 ```
@@ -267,14 +267,14 @@ if err != nil {
 # Development
 export DEBUG=true
 export NEXUS_SERVER=localhost
-export NEXUS_PORT=11972
+export NEXUS_MINION_PORT=11972
 export NEXUS_CONSOLE_PORT=11973
 export DBHOST=localhost
 
 # Production
 export DEBUG=false
 export NEXUS_SERVER=prod-nexus.example.com
-export NEXUS_PORT=443
+export NEXUS_MINION_PORT=443
 export NEXUS_CONSOLE_PORT=8443
 export DBHOST=prod-db.example.com
 export DBSSLMODE=require

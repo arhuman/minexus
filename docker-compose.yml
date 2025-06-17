@@ -33,7 +33,7 @@ services:
       - .env
     environment:
       - DEBUG=${DEBUG:-false}
-      - NEXUS_PORT=${NEXUS_PORT:-11972}
+      - NEXUS_MINION_PORT=${NEXUS_MINION_PORT:-11972}
       - NEXUS_CONSOLE_PORT=${NEXUS_CONSOLE_PORT:-11973}
       - DBHOST=nexus_db
       - DBPORT=${DBPORT:-5432}
@@ -41,7 +41,7 @@ services:
       - DBPASS=${DBPASS}
       - DBNAME=${DBNAME}
     ports:
-      - "${NEXUS_PORT:-11972}:${NEXUS_PORT:-11972}"
+      - "${NEXUS_MINION_PORT:-11972}:${NEXUS_MINION_PORT:-11972}"
       - "${NEXUS_CONSOLE_PORT:-11973}:${NEXUS_CONSOLE_PORT:-11973}"
     depends_on:
       nexus_db:
@@ -49,7 +49,7 @@ services:
     networks:
       - default
     healthcheck:
-     test: ["CMD-SHELL", "nc -z nexus ${NEXUS_PORT:-11972} || exit 1"]
+     test: ["CMD-SHELL", "nc -z nexus ${NEXUS_MINION_PORT:-11972} || exit 1"]
      interval: 2s  # More frequent checks
      timeout: 1s   # Faster timeout
      retries: 3    # Fewer retries
@@ -67,7 +67,7 @@ services:
       - DEBUG=${DEBUG:-false}
       - MINION_ID=${MINION_ID:-minion-docker-01}
       - NEXUS_SERVER=nexus
-      - NEXUS_PORT=${NEXUS_PORT:-11972}
+      - NEXUS_MINION_PORT=${NEXUS_MINION_PORT:-11972}
       - HEARTBEAT_INTERVAL=${HEARTBEAT_INTERVAL:-60}
       - INITIAL_RECONNECT_DELAY=${INITIAL_RECONNECT_DELAY:-1}
       - MAX_RECONNECT_DELAY=${MAX_RECONNECT_DELAY:-3600}

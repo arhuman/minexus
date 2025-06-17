@@ -1289,6 +1289,11 @@ func TestGetCommandResults(t *testing.T) {
 		{
 			name: "successful retrieval with results",
 			setupMock: func(mock sqlmock.Sqlmock) {
+				// Mock the command existence check query first
+				mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM commands WHERE id = \\$1").
+					WithArgs("cmd-123").
+					WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
 				rows := sqlmock.NewRows([]string{"command_id", "minion_id", "exit_code", "stdout", "stderr", "timestamp"}).
 					AddRow("cmd-123", "minion-1", 0, "output1", "", 1640995200).
 					AddRow("cmd-123", "minion-2", 1, "output2", "error2", 1640995201)
@@ -1304,6 +1309,11 @@ func TestGetCommandResults(t *testing.T) {
 		{
 			name: "no results found",
 			setupMock: func(mock sqlmock.Sqlmock) {
+				// Mock the command existence check query first
+				mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM commands WHERE id = \\$1").
+					WithArgs("cmd-456").
+					WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
 				rows := sqlmock.NewRows([]string{"command_id", "minion_id", "exit_code", "stdout", "stderr", "timestamp"})
 
 				mock.ExpectQuery("SELECT command_id, minion_id, exit_code, stdout, stderr, EXTRACT\\(EPOCH FROM timestamp\\)::bigint FROM command_results WHERE command_id = \\$1 ORDER BY timestamp ASC").
@@ -1317,6 +1327,11 @@ func TestGetCommandResults(t *testing.T) {
 		{
 			name: "database query error",
 			setupMock: func(mock sqlmock.Sqlmock) {
+				// Mock the command existence check query first
+				mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM commands WHERE id = \\$1").
+					WithArgs("cmd-789").
+					WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
 				mock.ExpectQuery("SELECT command_id, minion_id, exit_code, stdout, stderr, EXTRACT\\(EPOCH FROM timestamp\\)::bigint FROM command_results WHERE command_id = \\$1 ORDER BY timestamp ASC").
 					WithArgs("cmd-789").
 					WillReturnError(fmt.Errorf("database connection failed"))

@@ -84,7 +84,7 @@ func main() {
 
 	// Create minion server (standard TLS)
 	minionServer := createMinionServer(cfg, serverCert, logger)
-	minionListener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+	minionListener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.MinionPort))
 	if err != nil {
 		logger.Fatal("Failed to create minion listener", zap.Error(err))
 	}
@@ -113,7 +113,7 @@ func main() {
 		defer wg.Done()
 		logger.Info("Minion server listening (TLS)",
 			zap.String("address", minionListener.Addr().String()),
-			zap.Int("port", cfg.Port))
+			zap.Int("port", cfg.MinionPort))
 		if err := minionServer.Serve(minionListener); err != nil {
 			logger.Error("Minion server failed", zap.Error(err))
 		}
