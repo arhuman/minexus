@@ -241,6 +241,28 @@ func (cl *ConfigLoader) ValidateNetworkAddress(key, value string) error {
 	return nil
 }
 
+// ValidateHostname validates a hostname (without port)
+func (cl *ConfigLoader) ValidateHostname(key, value string) error {
+	if value == "" {
+		return ValidationError{
+			Field:   key,
+			Value:   value,
+			Message: "hostname cannot be empty",
+		}
+	}
+
+	// Check if it contains a port (which it shouldn't)
+	if strings.Contains(value, ":") {
+		return ValidationError{
+			Field:   key,
+			Value:   value,
+			Message: "should contain only hostname, not host:port format",
+		}
+	}
+
+	return nil
+}
+
 // ValidateRequired ensures a required field is not empty
 func (cl *ConfigLoader) ValidateRequired(key, value string) error {
 	if value == "" {
@@ -329,7 +351,7 @@ type MinionConfig struct {
 // DefaultConsoleConfig returns default configuration for Console
 func DefaultConsoleConfig() *ConsoleConfig {
 	return &ConsoleConfig{
-		ServerAddr:     "localhost:11973", // Console mTLS port
+		ServerAddr:     "localhost:11973", // Will be constructed from NEXUS_SERVER + NEXUS_CONSOLE_PORT
 		ConnectTimeout: 10,
 		Debug:          false,
 		TLSSkipVerify:  false, // mTLS requires proper certificate validation
@@ -356,8 +378,8 @@ func DefaultNexusConfig() *NexusConfig {
 // DefaultMinionConfig returns default configuration for Minion
 func DefaultMinionConfig() *MinionConfig {
 	return &MinionConfig{
-		ServerAddr:            "localhost:11972",
-		ID:                    "", // Will be auto-generated if empty
+		ServerAddr:            "localhost:11972", // Will be constructed from NEXUS_SERVER + NEXUS_PORT
+		ID:                    "",                // Will be auto-generated if empty
 		Debug:                 false,
 		ConnectTimeout:        3,
 		InitialReconnectDelay: 1,    // 1 second initial delay
@@ -377,20 +399,20 @@ func LoadConsoleConfig() (*ConsoleConfig, error) {
 	config := DefaultConsoleConfig()
 	var validationErrors []error
 
-	// Load and validate server address (console uses mTLS port)
-	config.ServerAddr = loader.GetString("NEXUS_CONSOLE_SERVER", config.ServerAddr)
-	if config.ServerAddr == loader.GetString("NEXUS_CONSOLE_SERVER", "") {
-		// If NEXUS_CONSOLE_SERVER is not set, fall back to NEXUS_SERVER but use console port
-		if nexusServer := loader.GetString("NEXUS_SERVER", ""); nexusServer != "" {
-			// Replace port with console port if needed
-			if nexusServer == "localhost:11972" {
-				config.ServerAddr = "localhost:11973"
-			}
-		}
-	}
-	if err := loader.ValidateNetworkAddress("NEXUS_CONSOLE_SERVER", config.ServerAddr); err != nil {
+	// Load and validate server hostname
+	nexusServer := loader.GetString("NEXUS_SERVER", "localhost")
+	if err := loader.ValidateHostname("NEXUS_SERVER", nexusServer); err != nil {
 		validationErrors = append(validationErrors, err)
 	}
+
+	// Load and validate console port
+	consolePort, err := loader.GetIntInRange("NEXUS_CONSOLE_PORT", 11973, 1, 65535)
+	if err != nil {
+		validationErrors = append(validationErrors, err)
+	}
+
+	// Construct server address from hostname and port
+	config.ServerAddr = fmt.Sprintf("%s:%d", nexusServer, consolePort)
 
 	// Load and validate connect timeout
 	if timeout, err := loader.GetIntInRange("CONNECT_TIMEOUT", config.ConnectTimeout, 1, 300); err != nil {
@@ -427,6 +449,7 @@ func LoadConsoleConfig() (*ConsoleConfig, error) {
 			case "-server", "--server":
 				if i+1 < len(os.Args)-1 {
 					addr := os.Args[i+2]
+					// For backward compatibility, still accept host:port format in command line flags
 					if err := loader.ValidateNetworkAddress("server", addr); err != nil {
 						validationErrors = append(validationErrors, err)
 					} else {
@@ -620,11 +643,20 @@ func LoadMinionConfig() (*MinionConfig, error) {
 	config := DefaultMinionConfig()
 	var validationErrors []error
 
-	// Load and validate server address
-	config.ServerAddr = loader.GetString("NEXUS_SERVER", config.ServerAddr)
-	if err := loader.ValidateNetworkAddress("NEXUS_SERVER", config.ServerAddr); err != nil {
+	// Load and validate server hostname
+	nexusServer := loader.GetString("NEXUS_SERVER", "localhost")
+	if err := loader.ValidateHostname("NEXUS_SERVER", nexusServer); err != nil {
 		validationErrors = append(validationErrors, err)
 	}
+
+	// Load and validate nexus port
+	nexusPort, err := loader.GetIntInRange("NEXUS_PORT", 11972, 1, 65535)
+	if err != nil {
+		validationErrors = append(validationErrors, err)
+	}
+
+	// Construct server address from hostname and port
+	config.ServerAddr = fmt.Sprintf("%s:%d", nexusServer, nexusPort)
 
 	// Load minion ID (optional)
 	config.ID = loader.GetString("MINION_ID", config.ID)
@@ -702,6 +734,7 @@ func LoadMinionConfig() (*MinionConfig, error) {
 	flag.Parse()
 
 	// Apply and validate command line flags
+	// For backward compatibility, still accept host:port format in command line flags
 	if err := loader.ValidateNetworkAddress("server", *serverAddr); err != nil {
 		validationErrors = append(validationErrors, err)
 	} else {

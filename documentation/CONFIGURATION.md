@@ -54,8 +54,8 @@ type ConsoleConfig struct {
 ```
 
 **Environment Variables:**
-- `NEXUS_CONSOLE_SERVER` - Console server address for mTLS (default: "localhost:11973")
-- `NEXUS_SERVER` - Fallback server address (maps to console port if NEXUS_CONSOLE_SERVER not set)
+- `NEXUS_SERVER` - Nexus server hostname (default: "localhost")
+- `NEXUS_CONSOLE_PORT` - Console server port for mTLS (default: 11973, range: 1-65535)
 - `CONNECT_TIMEOUT` - Connection timeout in seconds (default: 3, range: 1-300)
 - `DEBUG` - Enable debug mode (default: false)
 
@@ -67,11 +67,12 @@ type ConsoleConfig struct {
 **Usage Example:**
 ```bash
 # Using environment variables
-export NEXUS_CONSOLE_SERVER=nexus.example.com:11973
+export NEXUS_SERVER=nexus.example.com
+export NEXUS_CONSOLE_PORT=11973
 export DEBUG=true
 ./console
 
-# Using command line flags
+# Using command line flags (backward compatible with host:port format)
 ./console --server nexus.example.com:11973 --debug
 ```
 
@@ -137,7 +138,8 @@ type MinionConfig struct {
 ```
 
 **Environment Variables:**
-- `NEXUS_SERVER` - Server address (default: "localhost:11972")
+- `NEXUS_SERVER` - Nexus server hostname (default: "localhost")
+- `NEXUS_PORT` - Nexus server port for minions (default: 11972, range: 1-65535)
 - `MINION_ID` - Minion ID (optional, auto-generated if empty)
 - `DEBUG` - Enable debug mode (default: false)
 - `CONNECT_TIMEOUT` - Connection timeout (default: 3, range: 1-300)
@@ -147,7 +149,7 @@ type MinionConfig struct {
 - `RECONNECT_DELAY` - Legacy reconnection delay (deprecated, sets both initial and max)
 
 **Command Line Flags:**
-- `-server` - Nexus server address
+- `-server` - Nexus server address (backward compatible with host:port format)
 - `-id` - Minion ID
 - `-debug` - Enable debug mode
 - `-connect-timeout` - Connection timeout in seconds
@@ -162,6 +164,7 @@ The `.env` file supports standard environment variable format:
 
 ```bash
 # Nexus server configuration
+NEXUS_SERVER=nexus.example.com
 NEXUS_PORT=11972
 NEXUS_CONSOLE_PORT=11973
 DBHOST=database.example.com
@@ -172,15 +175,11 @@ DBNAME=minexus_prod
 DBSSLMODE=require
 
 # Minion configuration
-NEXUS_SERVER=nexus.example.com:11972
 MINION_ID=worker-01
 CONNECT_TIMEOUT=3
 INITIAL_RECONNECT_DELAY=5
 MAX_RECONNECT_DELAY=3600
 HEARTBEAT_INTERVAL=60
-
-# Console configuration
-NEXUS_CONSOLE_SERVER=nexus.example.com:11973
 
 # Global settings
 DEBUG=false
@@ -198,9 +197,10 @@ DEBUG=false
 The configuration system includes comprehensive validation:
 
 ### Network Addresses
-- Must be in `host:port` format
-- Port must be between 1 and 65535
-- Host cannot be empty
+- NEXUS_SERVER must contain only hostname (no port)
+- Ports must be between 1 and 65535
+- Hostname cannot be empty
+- Command line flags still accept host:port format for backward compatibility
 
 ### Integer Ranges
 - **Ports**: 1-65535
@@ -266,15 +266,17 @@ if err != nil {
 ```bash
 # Development
 export DEBUG=true
-export DBHOST=localhost
+export NEXUS_SERVER=localhost
 export NEXUS_PORT=11972
 export NEXUS_CONSOLE_PORT=11973
+export DBHOST=localhost
 
 # Production
 export DEBUG=false
-export DBHOST=prod-db.example.com
+export NEXUS_SERVER=prod-nexus.example.com
 export NEXUS_PORT=443
 export NEXUS_CONSOLE_PORT=8443
+export DBHOST=prod-db.example.com
 export DBSSLMODE=require
 ```
 
@@ -323,7 +325,8 @@ The unified system maintains backward compatibility:
 **"Configuration validation failed"**
 - Check that all required values are provided
 - Verify value formats and ranges
-- Ensure network addresses are in `host:port` format
+- Ensure NEXUS_SERVER contains only hostname (no port)
+- Ensure ports are within valid ranges (1-65535)
 
 **"Failed to load environment file"**
 - Check that the `.env` file exists and is readable

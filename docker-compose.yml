@@ -66,7 +66,8 @@ services:
     environment:
       - DEBUG=${DEBUG:-false}
       - MINION_ID=${MINION_ID:-minion-docker-01}
-      - NEXUS_SERVER=nexus:${NEXUS_PORT:-11972}
+      - NEXUS_SERVER=nexus
+      - NEXUS_PORT=${NEXUS_PORT:-11972}
       - HEARTBEAT_INTERVAL=${HEARTBEAT_INTERVAL:-60}
       - INITIAL_RECONNECT_DELAY=${INITIAL_RECONNECT_DELAY:-1}
       - MAX_RECONNECT_DELAY=${MAX_RECONNECT_DELAY:-3600}
@@ -87,7 +88,8 @@ services:
       - .env
     environment:
       - DEBUG=${DEBUG:-false}
-      - NEXUS_SERVER=nexus:${NEXUS_CONSOLE_PORT:-11973}
+      - NEXUS_SERVER=nexus
+      - NEXUS_CONSOLE_PORT=${NEXUS_CONSOLE_PORT:-11973}
       - CONNECT_TIMEOUT=${CONNECT_TIMEOUT:-3}
     depends_on:
       nexus:
