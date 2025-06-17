@@ -191,8 +191,8 @@ func TestConfigurationLoading(t *testing.T) {
 			t.Fatal("Expected default configuration to be created")
 		}
 
-		if cfg.Port != 11972 {
-			t.Errorf("Expected default port 11972, got %d", cfg.Port)
+		if cfg.MinionPort != 11972 {
+			t.Errorf("Expected default minion port 11972, got %d", cfg.MinionPort)
 		}
 
 		if cfg.DBHost != "localhost" {
@@ -397,8 +397,8 @@ func TestMainIntegration(t *testing.T) {
 
 	// 1. Use default configuration to avoid flag conflicts
 	cfg := config.DefaultNexusConfig()
-	cfg.Debug = true // Set debug mode for testing
-	cfg.Port = 0     // Use port 0 for testing
+	cfg.Debug = true   // Set debug mode for testing
+	cfg.MinionPort = 0 // Use port 0 for testing
 
 	if cfg == nil {
 		t.Fatal("Failed to load configuration")
@@ -809,7 +809,7 @@ func TestMainFunctionFlow(t *testing.T) {
 		// 2. Configuration loading simulation
 		cfg := config.DefaultNexusConfig()
 		cfg.Debug = true
-		cfg.Port = 0 // Use random port
+		cfg.MinionPort = 0 // Use random port
 
 		// 3. Logger creation
 		var logger *zap.Logger
@@ -838,7 +838,7 @@ func TestMainFunctionFlow(t *testing.T) {
 		defer server.Shutdown()
 
 		// 7. TCP listener creation
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.MinionPort))
 		if err != nil {
 			t.Fatalf("Failed to listen: %v", err)
 		}
@@ -1074,11 +1074,11 @@ func TestMainFunctionActual(t *testing.T) {
 
 		// Set environment variables for controlled testing
 		os.Setenv("DEBUG", "true")
-		os.Setenv("NEXUS_PORT", "0") // Use random available port
-		os.Setenv("DBHOST", "")      // No database for testing
+		os.Setenv("NEXUS_MINION_PORT", "0") // Use random available port
+		os.Setenv("DBHOST", "")             // No database for testing
 		defer func() {
 			os.Unsetenv("DEBUG")
-			os.Unsetenv("NEXUS_PORT")
+			os.Unsetenv("NEXUS_MINION_PORT")
 			os.Unsetenv("DBHOST")
 		}()
 
@@ -1259,10 +1259,10 @@ func TestMainFunctionParts(t *testing.T) {
 	t.Run("listener creation", func(t *testing.T) {
 		// Test the listener creation logic from main
 		cfg := config.DefaultNexusConfig()
-		cfg.Port = 0 // Use random port for testing
+		cfg.MinionPort = 0 // Use random port for testing
 
 		// Test listener creation (like main does)
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.MinionPort))
 		if err != nil {
 			// Test the fatal error scenario from main
 			errorMsg := fmt.Sprintf("Failed to listen: %v", err)

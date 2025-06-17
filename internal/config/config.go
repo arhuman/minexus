@@ -241,6 +241,28 @@ func (cl *ConfigLoader) ValidateNetworkAddress(key, value string) error {
 	return nil
 }
 
+// ValidateHostname validates a hostname (without port)
+func (cl *ConfigLoader) ValidateHostname(key, value string) error {
+	if value == "" {
+		return ValidationError{
+			Field:   key,
+			Value:   value,
+			Message: "hostname cannot be empty",
+		}
+	}
+
+	// Check if it contains a port (which it shouldn't)
+	if strings.Contains(value, ":") {
+		return ValidationError{
+			Field:   key,
+			Value:   value,
+			Message: "should contain only hostname, not host:port format",
+		}
+	}
+
+	return nil
+}
+
 // ValidateRequired ensures a required field is not empty
 func (cl *ConfigLoader) ValidateRequired(key, value string) error {
 	if value == "" {
@@ -295,11 +317,13 @@ type ConsoleConfig struct {
 	ServerAddr     string
 	ConnectTimeout int // seconds
 	Debug          bool
+	TLSSkipVerify  bool
 }
 
 // NexusConfig holds configuration for the Nexus server
 type NexusConfig struct {
-	Port               int
+	MinionPort         int // Port for minion connections with standard TLS
+	ConsolePort        int // Port for console connections with mTLS
 	DBHost             string
 	DBPort             int
 	DBUser             string
@@ -321,43 +345,47 @@ type MinionConfig struct {
 	InitialReconnectDelay int // seconds - starting delay for exponential backoff
 	MaxReconnectDelay     int // seconds - maximum delay cap for exponential backoff
 	HeartbeatInterval     int // seconds
+	TLSSkipVerify         bool
 }
 
 // DefaultConsoleConfig returns default configuration for Console
 func DefaultConsoleConfig() *ConsoleConfig {
 	return &ConsoleConfig{
-		ServerAddr:     "localhost:11972",
+		ServerAddr:     "localhost:11973", // Will be constructed from NEXUS_SERVER + NEXUS_CONSOLE_PORT
 		ConnectTimeout: 10,
 		Debug:          false,
+		TLSSkipVerify:  false, // mTLS requires proper certificate validation
 	}
 }
 
 // DefaultNexusConfig returns default configuration for Nexus
 func DefaultNexusConfig() *NexusConfig {
 	return &NexusConfig{
-		Port:       11972,
-		DBHost:     "localhost",
-		DBPort:     5432,
-		DBUser:     "postgres",
-		DBPassword: "postgres",
-		DBName:     "minexus",
-		DBSSLMode:  "disable",
-		Debug:      false,
-		MaxMsgSize: 1024 * 1024 * 10, // 10MB
-		FileRoot:   "/tmp",
+		MinionPort:  11972,
+		ConsolePort: 11973,
+		DBHost:      "localhost",
+		DBPort:      5432,
+		DBUser:      "postgres",
+		DBPassword:  "postgres",
+		DBName:      "minexus",
+		DBSSLMode:   "disable",
+		Debug:       false,
+		MaxMsgSize:  1024 * 1024 * 10, // 10MB
+		FileRoot:    "/tmp",
 	}
 }
 
 // DefaultMinionConfig returns default configuration for Minion
 func DefaultMinionConfig() *MinionConfig {
 	return &MinionConfig{
-		ServerAddr:            "localhost:11972",
-		ID:                    "", // Will be auto-generated if empty
+		ServerAddr:            "localhost:11972", // Will be constructed from NEXUS_SERVER + NEXUS_MINION_PORT
+		ID:                    "",                // Will be auto-generated if empty
 		Debug:                 false,
 		ConnectTimeout:        3,
 		InitialReconnectDelay: 1,    // 1 second initial delay
 		MaxReconnectDelay:     3600, // 1 hour maximum delay
 		HeartbeatInterval:     30,
+		TLSSkipVerify:         true,
 	}
 }
 
@@ -371,11 +399,20 @@ func LoadConsoleConfig() (*ConsoleConfig, error) {
 	config := DefaultConsoleConfig()
 	var validationErrors []error
 
-	// Load and validate server address
-	config.ServerAddr = loader.GetString("NEXUS_SERVER", config.ServerAddr)
-	if err := loader.ValidateNetworkAddress("NEXUS_SERVER", config.ServerAddr); err != nil {
+	// Load and validate server hostname
+	nexusServer := loader.GetString("NEXUS_SERVER", "localhost")
+	if err := loader.ValidateHostname("NEXUS_SERVER", nexusServer); err != nil {
 		validationErrors = append(validationErrors, err)
 	}
+
+	// Load and validate console port
+	consolePort, err := loader.GetIntInRange("NEXUS_CONSOLE_PORT", 11973, 1, 65535)
+	if err != nil {
+		validationErrors = append(validationErrors, err)
+	}
+
+	// Construct server address from hostname and port
+	config.ServerAddr = fmt.Sprintf("%s:%d", nexusServer, consolePort)
 
 	// Load and validate connect timeout
 	if timeout, err := loader.GetIntInRange("CONNECT_TIMEOUT", config.ConnectTimeout, 1, 300); err != nil {
@@ -391,6 +428,20 @@ func LoadConsoleConfig() (*ConsoleConfig, error) {
 		config.Debug = debug
 	}
 
+	// Load TLS configuration - for console mTLS, certificate validation is mandatory
+	// TLS_SKIP_VERIFY is deprecated for console connections but kept for backward compatibility
+	if tlsSkipVerify, err := loader.GetBool("TLS_SKIP_VERIFY", config.TLSSkipVerify); err != nil {
+		validationErrors = append(validationErrors, err)
+	} else {
+		if tlsSkipVerify {
+			if loader.logger != nil {
+				loader.logger.Warn("TLS_SKIP_VERIFY=true is deprecated for console mTLS connections and will be ignored")
+			}
+		}
+		// Always enforce certificate validation for console mTLS
+		config.TLSSkipVerify = false
+	}
+
 	// Handle manual flag parsing for console (to avoid conflicts with other flag parsers)
 	if len(os.Args) > 1 {
 		for i, arg := range os.Args[1:] {
@@ -398,6 +449,7 @@ func LoadConsoleConfig() (*ConsoleConfig, error) {
 			case "-server", "--server":
 				if i+1 < len(os.Args)-1 {
 					addr := os.Args[i+2]
+					// For backward compatibility, still accept host:port format in command line flags
 					if err := loader.ValidateNetworkAddress("server", addr); err != nil {
 						validationErrors = append(validationErrors, err)
 					} else {
@@ -426,6 +478,9 @@ func LoadConsoleConfig() (*ConsoleConfig, error) {
 						})
 					}
 				}
+			case "-tls-skip-verify", "--tls-skip-verify":
+				// Deprecated flag for console mTLS - log warning but don't apply
+				fmt.Fprintf(os.Stderr, "Warning: -tls-skip-verify is deprecated for console mTLS connections and will be ignored\n")
 			}
 		}
 	}
@@ -454,10 +509,17 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	var validationErrors []error
 
 	// Load and validate port (allow 0 for system-assigned port)
-	if port, err := loader.GetIntInRange("NEXUS_PORT", config.Port, 0, 65535); err != nil {
+	if port, err := loader.GetIntInRange("NEXUS_MINION_PORT", config.MinionPort, 0, 65535); err != nil {
 		validationErrors = append(validationErrors, err)
 	} else {
-		config.Port = port
+		config.MinionPort = port
+	}
+
+	// Load and validate console port
+	if consolePort, err := loader.GetIntInRange("NEXUS_CONSOLE_PORT", config.ConsolePort, 0, 65535); err != nil {
+		validationErrors = append(validationErrors, err)
+	} else {
+		config.ConsolePort = consolePort
 	}
 
 	// Load database configuration
@@ -495,7 +557,8 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	config.FileRoot = loader.GetString("FILEROOT", config.FileRoot)
 
 	// Parse command line flags (highest priority)
-	port := flag.Int("port", config.Port, "Port to listen on")
+	minionPort := flag.Int("minion-port", config.MinionPort, "Port to listen on for minion connections")
+	consolePort := flag.Int("console-port", config.ConsolePort, "Console port for mTLS connections")
 	dbHost := flag.String("db-host", config.DBHost, "Database host")
 	dbPort := flag.Int("db-port", config.DBPort, "Database port")
 	dbUser := flag.String("db-user", config.DBUser, "Database user")
@@ -512,14 +575,24 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	flag.Parse()
 
 	// Apply and validate command line flags
-	if *port < 0 || *port > 65535 {
+	if *minionPort < 0 || *minionPort > 65535 {
 		validationErrors = append(validationErrors, ValidationError{
-			Field:   "port",
-			Value:   strconv.Itoa(*port),
+			Field:   "minion-port",
+			Value:   strconv.Itoa(*minionPort),
 			Message: "must be between 0 and 65535 (0 for system-assigned)",
 		})
 	} else {
-		config.Port = *port
+		config.MinionPort = *minionPort
+	}
+
+	if *consolePort < 0 || *consolePort > 65535 {
+		validationErrors = append(validationErrors, ValidationError{
+			Field:   "console-port",
+			Value:   strconv.Itoa(*consolePort),
+			Message: "must be between 0 and 65535 (0 for system-assigned)",
+		})
+	} else {
+		config.ConsolePort = *consolePort
 	}
 
 	config.DBHost = *dbHost
@@ -570,11 +643,20 @@ func LoadMinionConfig() (*MinionConfig, error) {
 	config := DefaultMinionConfig()
 	var validationErrors []error
 
-	// Load and validate server address
-	config.ServerAddr = loader.GetString("NEXUS_SERVER", config.ServerAddr)
-	if err := loader.ValidateNetworkAddress("NEXUS_SERVER", config.ServerAddr); err != nil {
+	// Load and validate server hostname
+	nexusServer := loader.GetString("NEXUS_SERVER", "localhost")
+	if err := loader.ValidateHostname("NEXUS_SERVER", nexusServer); err != nil {
 		validationErrors = append(validationErrors, err)
 	}
+
+	// Load and validate nexus port
+	nexusPort, err := loader.GetIntInRange("NEXUS_MINION_PORT", 11972, 1, 65535)
+	if err != nil {
+		validationErrors = append(validationErrors, err)
+	}
+
+	// Construct server address from hostname and port
+	config.ServerAddr = fmt.Sprintf("%s:%d", nexusServer, nexusPort)
 
 	// Load minion ID (optional)
 	config.ID = loader.GetString("MINION_ID", config.ID)
@@ -611,6 +693,13 @@ func LoadMinionConfig() (*MinionConfig, error) {
 		config.HeartbeatInterval = heartbeat
 	}
 
+	// Load TLS configuration
+	if tlsSkipVerify, err := loader.GetBool("TLS_SKIP_VERIFY", config.TLSSkipVerify); err != nil {
+		validationErrors = append(validationErrors, err)
+	} else {
+		config.TLSSkipVerify = tlsSkipVerify
+	}
+
 	// Maintain backward compatibility with RECONNECT_DELAY
 	if reconnectDelay, err := loader.GetInt("RECONNECT_DELAY", -1); err == nil && reconnectDelay != -1 {
 		if reconnectDelay < 1 || reconnectDelay > 3600 {
@@ -636,12 +725,16 @@ func LoadMinionConfig() (*MinionConfig, error) {
 	maxReconnectDelay := flag.Int("max-reconnect-delay", config.MaxReconnectDelay, "Maximum reconnection delay in seconds (exponential backoff cap)")
 	heartbeatInterval := flag.Int("heartbeat-interval", config.HeartbeatInterval, "Heartbeat interval in seconds")
 
+	// TLS flags
+	tlsSkipVerify := flag.Bool("tls-skip-verify", config.TLSSkipVerify, "Skip TLS certificate verification")
+
 	// Maintain backward compatibility with the old reconnect-delay flag
 	reconnectDelay := flag.Int("reconnect-delay", -1, "Reconnection delay in seconds (deprecated, use initial-reconnect-delay and max-reconnect-delay)")
 
 	flag.Parse()
 
 	// Apply and validate command line flags
+	// For backward compatibility, still accept host:port format in command line flags
 	if err := loader.ValidateNetworkAddress("server", *serverAddr); err != nil {
 		validationErrors = append(validationErrors, err)
 	} else {
@@ -691,6 +784,8 @@ func LoadMinionConfig() (*MinionConfig, error) {
 		config.HeartbeatInterval = *heartbeatInterval
 	}
 
+	config.TLSSkipVerify = *tlsSkipVerify
+
 	// Handle backward compatibility with old reconnect-delay flag
 	if *reconnectDelay != -1 {
 		if *reconnectDelay < 1 || *reconnectDelay > 3600 {
@@ -739,7 +834,8 @@ func (c *NexusConfig) DBConnectionString() string {
 // LogConfig logs the configuration (masks sensitive data)
 func (c *NexusConfig) LogConfig(logger *zap.Logger) {
 	logger.Info("Configuration loaded",
-		zap.Int("port", c.Port),
+		zap.Int("minion_port", c.MinionPort),
+		zap.Int("console_port", c.ConsolePort),
 		zap.String("db_host", c.DBHost),
 		zap.Int("db_port", c.DBPort),
 		zap.String("db_name", c.DBName),
@@ -758,7 +854,8 @@ func (c *MinionConfig) LogConfig(logger *zap.Logger) {
 		zap.Int("connect_timeout", c.ConnectTimeout),
 		zap.Int("initial_reconnect_delay", c.InitialReconnectDelay),
 		zap.Int("max_reconnect_delay", c.MaxReconnectDelay),
-		zap.Int("heartbeat_interval", c.HeartbeatInterval))
+		zap.Int("heartbeat_interval", c.HeartbeatInterval),
+		zap.Bool("tls_skip_verify", c.TLSSkipVerify))
 }
 
 // LogConfig logs the console configuration
@@ -766,5 +863,6 @@ func (c *ConsoleConfig) LogConfig(logger *zap.Logger) {
 	logger.Info("Configuration loaded",
 		zap.String("server", c.ServerAddr),
 		zap.Int("connect_timeout", c.ConnectTimeout),
-		zap.Bool("debug", c.Debug))
+		zap.Bool("debug", c.Debug),
+		zap.Bool("tls_skip_verify", c.TLSSkipVerify))
 }

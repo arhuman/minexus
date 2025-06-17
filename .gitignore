@@ -18,3 +18,12 @@ pg_data/
 # Coverage artifacts
 coverage.html
 coverage.out
+# TLS related
+# These files contain certificates, private keys, and related configuration
+# files that should never be committed to version control for security reasons
+*.crt
+*.key
+*.csr
+*.srl
+*.pem
+internal/certs/files/*.conf

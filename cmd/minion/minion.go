@@ -4,12 +4,14 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"minexus/internal/certs"
 	"minexus/internal/config"
 	"minexus/internal/minion"
 	"minexus/internal/version"
@@ -17,7 +19,7 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 )
 
@@ -43,13 +45,35 @@ func setupLogger(debug bool) (*zap.Logger, zap.AtomicLevel, error) {
 }
 
 // setupGRPCConnection establishes connection to the server
-func setupGRPCConnection(serverAddr string, connectTimeout time.Duration) (*grpc.ClientConn, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+func setupGRPCConnection(cfg *config.MinionConfig, logger *zap.Logger) (*grpc.ClientConn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.ConnectTimeout)*time.Second)
 	defer cancel()
 
-	return grpc.DialContext(ctx, serverAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
+	// Prepare dial options
+	var dialOpts []grpc.DialOption
+	dialOpts = append(dialOpts, grpc.WithBlock())
+
+	// Configure TLS credentials (mandatory, embedded)
+	logger.Info("Configuring embedded TLS for minion client",
+		zap.Bool("skip_verify", cfg.TLSSkipVerify))
+
+	cert, err := tls.X509KeyPair(certs.CertPEM, certs.KeyPEM)
+	if err != nil {
+		logger.Error("Failed to load embedded TLS certificates", zap.Error(err))
+		return nil, fmt.Errorf("failed to load embedded TLS certificates: %w", err)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates:       []tls.Certificate{cert},
+		InsecureSkipVerify: cfg.TLSSkipVerify,
+	}
+
+	creds := credentials.NewTLS(tlsConfig)
+	dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
+	logger.Info("Embedded TLS credentials configured for minion client")
+
+	// Add keepalive and backoff options
+	dialOpts = append(dialOpts,
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                60 * time.Second, // Send pings every 60 seconds
 			Timeout:             20 * time.Second, // Wait 20 seconds for ping ack
@@ -59,6 +83,8 @@ func setupGRPCConnection(serverAddr string, connectTimeout time.Duration) (*grpc
 			MaxDelay: 5 * time.Second,
 		}),
 	)
+
+	return grpc.DialContext(ctx, cfg.ServerAddr, dialOpts...)
 }
 
 // checkVersionFlag checks if version flag was provided and prints version if so
@@ -99,10 +125,9 @@ func main() {
 	logger.Info("Connecting to server", zap.String("address", cfg.ServerAddr))
 
 	// Set up gRPC connection to the server with configurable timeout
-	connectTimeout := time.Duration(cfg.ConnectTimeout) * time.Second
-	conn, err := setupGRPCConnection(cfg.ServerAddr, connectTimeout)
+	conn, err := setupGRPCConnection(cfg, logger)
 	if err != nil {
-		logger.Fatal("Failed to connect to server", zap.Error(err))
+		logger.Fatal("Failed to connect to server", zap.Error(err), zap.String("address", cfg.ServerAddr))
 	}
 	defer conn.Close()
 	logger.Info("Connected to Nexus server")

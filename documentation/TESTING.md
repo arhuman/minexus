@@ -164,7 +164,7 @@ Integration tests automatically manage Docker Compose services:
 ### Required Services
 
 - **nexus_db**: PostgreSQL database with schema initialization
-- **nexus_server**: Nexus gRPC server (port 11972)
+- **nexus_server**: Nexus gRPC server (port 11972 for minions)
 - **minion_1**: Test minion client connected to Nexus
 
 ### Test Categories

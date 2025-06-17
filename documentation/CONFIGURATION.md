@@ -11,7 +11,19 @@ The configuration system follows a strict priority order:
 3. **Configuration Files** (`.env`)
 4. **Default Values** (lowest priority)
 
-## Architecture
+## Dual-Port Architecture
+
+Minexus uses a dual-port architecture for enhanced security:
+
+- **Port 11972** (`NEXUS_MINION_PORT`) - Standard TLS for minion connections
+- **Port 11973** (`NEXUS_CONSOLE_PORT`) - Mutual TLS (mTLS) for console connections
+
+This separation ensures that:
+- Minions use standard TLS authentication (server-only certificates)
+- Console connections use mutual TLS authentication (both client and server certificates)
+- Different security policies can be applied to each type of connection
+
+## Configuration Architecture
 
 The unified configuration system is built around the `ConfigLoader` architecture:
 
@@ -42,7 +54,8 @@ type ConsoleConfig struct {
 ```
 
 **Environment Variables:**
-- `NEXUS_SERVER` - Server address (default: "localhost:11972")
+- `NEXUS_SERVER` - Nexus server hostname (default: "localhost")
+- `NEXUS_CONSOLE_PORT` - Console server port for mTLS (default: 11973, range: 1-65535)
 - `CONNECT_TIMEOUT` - Connection timeout in seconds (default: 3, range: 1-300)
 - `DEBUG` - Enable debug mode (default: false)
 
@@ -54,12 +67,13 @@ type ConsoleConfig struct {
 **Usage Example:**
 ```bash
 # Using environment variables
-export NEXUS_SERVER=nexus.example.com:11972
+export NEXUS_SERVER=nexus.example.com
+export NEXUS_CONSOLE_PORT=11973
 export DEBUG=true
 ./console
 
-# Using command line flags
-./console --server nexus.example.com:11972 --debug
+# Using command line flags (backward compatible with host:port format)
+./console --server nexus.example.com:11973 --debug
 ```
 
 ### Nexus Configuration
@@ -82,7 +96,8 @@ type NexusConfig struct {
 ```
 
 **Environment Variables:**
-- `NEXUS_PORT` - Server port (default: 11972, range: 1-65535)
+- `NEXUS_MINION_PORT` - Minion server port (default: 11972, range: 1-65535)
+- `NEXUS_CONSOLE_PORT` - Console server port with mTLS (default: 11973, range: 1-65535)
 - `DBHOST` - Database host (default: "localhost")
 - `DBPORT` - Database port (default: 5432, range: 1-65535)
 - `DBUSER` - Database user (default: "postgres")
@@ -94,7 +109,8 @@ type NexusConfig struct {
 - `FILEROOT` - File root directory (default: "/tmp")
 
 **Command Line Flags:**
-- `-port` - Server listening port
+- `-port` - Minion server listening port
+- `-console-port` - Console server listening port (mTLS)
 - `-db-host` - Database host
 - `-db-port` - Database port
 - `-db-user` - Database username
@@ -122,7 +138,8 @@ type MinionConfig struct {
 ```
 
 **Environment Variables:**
-- `NEXUS_SERVER` - Server address (default: "localhost:11972")
+- `NEXUS_SERVER` - Nexus server hostname (default: "localhost")
+- `NEXUS_MINION_PORT` - Nexus server port for minions (default: 11972, range: 1-65535)
 - `MINION_ID` - Minion ID (optional, auto-generated if empty)
 - `DEBUG` - Enable debug mode (default: false)
 - `CONNECT_TIMEOUT` - Connection timeout (default: 3, range: 1-300)
@@ -132,7 +149,7 @@ type MinionConfig struct {
 - `RECONNECT_DELAY` - Legacy reconnection delay (deprecated, sets both initial and max)
 
 **Command Line Flags:**
-- `-server` - Nexus server address
+- `-server` - Nexus server address (backward compatible with host:port format)
 - `-id` - Minion ID
 - `-debug` - Enable debug mode
 - `-connect-timeout` - Connection timeout in seconds
@@ -147,7 +164,9 @@ The `.env` file supports standard environment variable format:
 
 ```bash
 # Nexus server configuration
-NEXUS_PORT=11972
+NEXUS_SERVER=nexus.example.com
+NEXUS_MINION_PORT=11972
+NEXUS_CONSOLE_PORT=11973
 DBHOST=database.example.com
 DBPORT=5432
 DBUSER=minexus_user
@@ -156,7 +175,6 @@ DBNAME=minexus_prod
 DBSSLMODE=require
 
 # Minion configuration
-NEXUS_SERVER=nexus.example.com:11972
 MINION_ID=worker-01
 CONNECT_TIMEOUT=3
 INITIAL_RECONNECT_DELAY=5
@@ -179,9 +197,10 @@ DEBUG=false
 The configuration system includes comprehensive validation:
 
 ### Network Addresses
-- Must be in `host:port` format
-- Port must be between 1 and 65535
-- Host cannot be empty
+- NEXUS_SERVER must contain only hostname (no port)
+- Ports must be between 1 and 65535
+- Hostname cannot be empty
+- Command line flags still accept host:port format for backward compatibility
 
 ### Integer Ranges
 - **Ports**: 1-65535
@@ -204,7 +223,7 @@ Configuration errors are reported with detailed messages:
 
 ```
 Configuration validation failed:
-  - configuration validation failed for NEXUS_PORT=70000: must be between 1 and 65535
+  - configuration validation failed for NEXUS_MINION_PORT=70000: must be between 1 and 65535
   - configuration validation failed for CONNECT_TIMEOUT=invalid: must be a valid integer
   - configuration validation failed for NEXUS_SERVER=invalid-address: must be in format 'host:port'
 ```
@@ -247,13 +266,17 @@ if err != nil {
 ```bash
 # Development
 export DEBUG=true
+export NEXUS_SERVER=localhost
+export NEXUS_MINION_PORT=11972
+export NEXUS_CONSOLE_PORT=11973
 export DBHOST=localhost
-export NEXUS_PORT=11972
 
 # Production
 export DEBUG=false
+export NEXUS_SERVER=prod-nexus.example.com
+export NEXUS_MINION_PORT=443
+export NEXUS_CONSOLE_PORT=8443
 export DBHOST=prod-db.example.com
-export NEXUS_PORT=443
 export DBSSLMODE=require
 ```
 
@@ -302,7 +325,8 @@ The unified system maintains backward compatibility:
 **"Configuration validation failed"**
 - Check that all required values are provided
 - Verify value formats and ranges
-- Ensure network addresses are in `host:port` format
+- Ensure NEXUS_SERVER contains only hostname (no port)
+- Ensure ports are within valid ranges (1-65535)
 
 **"Failed to load environment file"**
 - Check that the `.env` file exists and is readable

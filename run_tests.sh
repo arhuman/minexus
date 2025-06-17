@@ -11,7 +11,7 @@ COVERAGE_HTML="coverage.html"
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 MAX_RETRIES=60
 RETRY_INTERVAL=2
-NEXUS_PORT=${NEXUS_PORT:-11972}
+NEXUS_MINION_PORT=${NEXUS_MINION_PORT:-11972}
 DB_PORT=5432
 
 # Colors for output
@@ -115,7 +115,7 @@ setup_docker_services() {
         if [[ " ${services_to_start[*]} " =~ " nexus " ]]; then
             log_info "Starting Nexus server..."
             docker compose up -d nexus
-            wait_for_service "Nexus Server" "localhost" "$NEXUS_PORT" 45
+            wait_for_service "Nexus Server" "localhost" "$NEXUS_MINION_PORT" 45
         fi
         
         # Start minion if needed
@@ -129,7 +129,7 @@ setup_docker_services() {
         
         # Still verify they're accessible
         wait_for_service "PostgreSQL Database" "localhost" "$DB_PORT" 10
-        wait_for_service "Nexus Server" "localhost" "$NEXUS_PORT" 10
+        wait_for_service "Nexus Server" "localhost" "$NEXUS_MINION_PORT" 10
     fi
 }
 
@@ -166,7 +166,7 @@ if [ -n "$SLOW_TESTS" ]; then
     # Final verification
     log_info "Running final verification..."
     wait_for_service "PostgreSQL Database" "localhost" "$DB_PORT" 5
-    wait_for_service "Nexus Server" "localhost" "$NEXUS_PORT" 5
+    wait_for_service "Nexus Server" "localhost" "$NEXUS_MINION_PORT" 5
     
     log_info "Test environment setup completed successfully!"
 else

@@ -2,16 +2,19 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"strings"
 	"time"
 
+	"minexus/internal/certs"
 	"minexus/internal/config"
 	pb "minexus/protogen"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 )
 
 // GRPCClient handles all gRPC communication with the Nexus server
@@ -26,12 +29,43 @@ func NewGRPCClient(cfg *config.ConsoleConfig, logger *zap.Logger) (*GRPCClient, 
 	// Connect to Nexus server
 	logger.Info("Connecting to Nexus server", zap.String("address", cfg.ServerAddr))
 
+	// Configure mTLS credentials for console client authentication
+	logger.Info("Configuring mTLS for console client authentication")
+
+	// Load console client certificate and private key
+	clientCert, err := tls.X509KeyPair(certs.ConsoleClientCertPEM, certs.ConsoleClientKeyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load console client certificate: %w", err)
+	}
+
+	// Load CA certificate for server verification
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM(certs.CAPem) {
+		return nil, fmt.Errorf("failed to load CA certificate")
+	}
+
+	// Configure mTLS with client certificate authentication and CA verification
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{clientCert},
+		RootCAs:      caCertPool,
+		ServerName:   "nexus", // Must match server certificate CommonName
+	}
+
+	creds := credentials.NewTLS(tlsConfig)
+	logger.Info("mTLS credentials configured for console client",
+		zap.String("server_name", tlsConfig.ServerName))
+
+	// Create connection context with timeout
 	connectTimeout := time.Duration(cfg.ConnectTimeout) * time.Second
-	conn, err := grpc.Dial(cfg.ServerAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
-		grpc.WithTimeout(connectTimeout),
-	)
+	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+	defer cancel()
+
+	// Prepare dial options (using modern gRPC pattern)
+	dialOpts := []grpc.DialOption{
+		grpc.WithTransportCredentials(creds),
+	}
+
+	conn, err := grpc.DialContext(ctx, cfg.ServerAddr, dialOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to server: %w", err)
 	}
