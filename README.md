@@ -203,7 +203,8 @@ go build -o nexus ./cmd/nexus
 go build -o minion ./cmd/minion
 go build -o console ./cmd/console
 
-# Start Nexus server (TLS is mandatory, certificates embedded in binary)
+# Start Nexus server with dual-port architecture (TLS is mandatory, certificates embedded in binary)
+# Port 11972 for minions (standard TLS), Port 11973 for console (mTLS)
 nohup ./nexus > nexus.log &
 
 # In another terminal, start a Minion client (TLS is mandatory)
@@ -244,7 +245,9 @@ docker compose down
 ### Service Overview
 
 - **nexus_db**: PostgreSQL database with automatic schema initialization
-- **nexus**: Nexus server (gRPC port 11972) with health checks
+- **nexus**: Nexus server with dual-port architecture:
+  - **Port 11972** (`NEXUS_PORT`) - Minion connections with standard TLS
+  - **Port 11973** (`NEXUS_CONSOLE_PORT`) - Console connections with mutual TLS (mTLS)
 - **minion**: Single minion client that connects to nexus automatically
 - **console**: Interactive console client (optional, use `--profile console`)
 

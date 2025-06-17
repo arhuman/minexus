@@ -11,7 +11,19 @@ The configuration system follows a strict priority order:
 3. **Configuration Files** (`.env`)
 4. **Default Values** (lowest priority)
 
-## Architecture
+## Dual-Port Architecture
+
+Minexus uses a dual-port architecture for enhanced security:
+
+- **Port 11972** (`NEXUS_PORT`) - Standard TLS for minion connections
+- **Port 11973** (`NEXUS_CONSOLE_PORT`) - Mutual TLS (mTLS) for console connections
+
+This separation ensures that:
+- Minions use standard TLS authentication (server-only certificates)
+- Console connections use mutual TLS authentication (both client and server certificates)
+- Different security policies can be applied to each type of connection
+
+## Configuration Architecture
 
 The unified configuration system is built around the `ConfigLoader` architecture:
 
@@ -42,7 +54,8 @@ type ConsoleConfig struct {
 ```
 
 **Environment Variables:**
-- `NEXUS_SERVER` - Server address (default: "localhost:11972")
+- `NEXUS_CONSOLE_SERVER` - Console server address for mTLS (default: "localhost:11973")
+- `NEXUS_SERVER` - Fallback server address (maps to console port if NEXUS_CONSOLE_SERVER not set)
 - `CONNECT_TIMEOUT` - Connection timeout in seconds (default: 3, range: 1-300)
 - `DEBUG` - Enable debug mode (default: false)
 
@@ -54,12 +67,12 @@ type ConsoleConfig struct {
 **Usage Example:**
 ```bash
 # Using environment variables
-export NEXUS_SERVER=nexus.example.com:11972
+export NEXUS_CONSOLE_SERVER=nexus.example.com:11973
 export DEBUG=true
 ./console
 
 # Using command line flags
-./console --server nexus.example.com:11972 --debug
+./console --server nexus.example.com:11973 --debug
 ```
 
 ### Nexus Configuration
@@ -82,7 +95,8 @@ type NexusConfig struct {
 ```
 
 **Environment Variables:**
-- `NEXUS_PORT` - Server port (default: 11972, range: 1-65535)
+- `NEXUS_PORT` - Minion server port (default: 11972, range: 1-65535)
+- `NEXUS_CONSOLE_PORT` - Console server port with mTLS (default: 11973, range: 1-65535)
 - `DBHOST` - Database host (default: "localhost")
 - `DBPORT` - Database port (default: 5432, range: 1-65535)
 - `DBUSER` - Database user (default: "postgres")
@@ -94,7 +108,8 @@ type NexusConfig struct {
 - `FILEROOT` - File root directory (default: "/tmp")
 
 **Command Line Flags:**
-- `-port` - Server listening port
+- `-port` - Minion server listening port
+- `-console-port` - Console server listening port (mTLS)
 - `-db-host` - Database host
 - `-db-port` - Database port
 - `-db-user` - Database username
@@ -148,6 +163,7 @@ The `.env` file supports standard environment variable format:
 ```bash
 # Nexus server configuration
 NEXUS_PORT=11972
+NEXUS_CONSOLE_PORT=11973
 DBHOST=database.example.com
 DBPORT=5432
 DBUSER=minexus_user
@@ -162,6 +178,9 @@ CONNECT_TIMEOUT=3
 INITIAL_RECONNECT_DELAY=5
 MAX_RECONNECT_DELAY=3600
 HEARTBEAT_INTERVAL=60
+
+# Console configuration
+NEXUS_CONSOLE_SERVER=nexus.example.com:11973
 
 # Global settings
 DEBUG=false
@@ -249,11 +268,13 @@ if err != nil {
 export DEBUG=true
 export DBHOST=localhost
 export NEXUS_PORT=11972
+export NEXUS_CONSOLE_PORT=11973
 
 # Production
 export DEBUG=false
 export DBHOST=prod-db.example.com
 export NEXUS_PORT=443
+export NEXUS_CONSOLE_PORT=8443
 export DBSSLMODE=require
 ```
 
