@@ -7,7 +7,7 @@ import (
 
 var (
 	// Version is the application version - set by build flags
-	Version = "0.1.0"
+	Version = "dev"
 	// GitCommit is the git commit hash - set by build flags
 	GitCommit = "unknown"
 	// BuildDate is the build date - set by build flags

@@ -34,6 +34,7 @@ services:
     environment:
       - DEBUG=${DEBUG:-false}
       - NEXUS_PORT=${NEXUS_PORT:-11972}
+      - NEXUS_CONSOLE_PORT=${NEXUS_CONSOLE_PORT:-11973}
       - DBHOST=nexus_db
       - DBPORT=${DBPORT:-5432}
       - DBUSER=${DBUSER}
@@ -41,6 +42,7 @@ services:
       - DBNAME=${DBNAME}
     ports:
       - "${NEXUS_PORT:-11972}:${NEXUS_PORT:-11972}"
+      - "${NEXUS_CONSOLE_PORT:-11973}:${NEXUS_CONSOLE_PORT:-11973}"
     depends_on:
       nexus_db:
         condition: service_healthy
@@ -85,7 +87,7 @@ services:
       - .env
     environment:
       - DEBUG=${DEBUG:-false}
-      - NEXUS_SERVER=nexus:${NEXUS_PORT:-11972}
+      - NEXUS_SERVER=nexus:${NEXUS_CONSOLE_PORT:-11973}
       - CONNECT_TIMEOUT=${CONNECT_TIMEOUT:-3}
     depends_on:
       nexus:

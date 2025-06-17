@@ -295,11 +295,13 @@ type ConsoleConfig struct {
 	ServerAddr     string
 	ConnectTimeout int // seconds
 	Debug          bool
+	TLSSkipVerify  bool
 }
 
 // NexusConfig holds configuration for the Nexus server
 type NexusConfig struct {
 	Port               int
+	ConsolePort        int // Port for console connections with mTLS
 	DBHost             string
 	DBPort             int
 	DBUser             string
@@ -321,30 +323,33 @@ type MinionConfig struct {
 	InitialReconnectDelay int // seconds - starting delay for exponential backoff
 	MaxReconnectDelay     int // seconds - maximum delay cap for exponential backoff
 	HeartbeatInterval     int // seconds
+	TLSSkipVerify         bool
 }
 
 // DefaultConsoleConfig returns default configuration for Console
 func DefaultConsoleConfig() *ConsoleConfig {
 	return &ConsoleConfig{
-		ServerAddr:     "localhost:11972",
+		ServerAddr:     "localhost:11973", // Console mTLS port
 		ConnectTimeout: 10,
 		Debug:          false,
+		TLSSkipVerify:  false, // mTLS requires proper certificate validation
 	}
 }
 
 // DefaultNexusConfig returns default configuration for Nexus
 func DefaultNexusConfig() *NexusConfig {
 	return &NexusConfig{
-		Port:       11972,
-		DBHost:     "localhost",
-		DBPort:     5432,
-		DBUser:     "postgres",
-		DBPassword: "postgres",
-		DBName:     "minexus",
-		DBSSLMode:  "disable",
-		Debug:      false,
-		MaxMsgSize: 1024 * 1024 * 10, // 10MB
-		FileRoot:   "/tmp",
+		Port:        11972,
+		ConsolePort: 11973,
+		DBHost:      "localhost",
+		DBPort:      5432,
+		DBUser:      "postgres",
+		DBPassword:  "postgres",
+		DBName:      "minexus",
+		DBSSLMode:   "disable",
+		Debug:       false,
+		MaxMsgSize:  1024 * 1024 * 10, // 10MB
+		FileRoot:    "/tmp",
 	}
 }
 
@@ -358,6 +363,7 @@ func DefaultMinionConfig() *MinionConfig {
 		InitialReconnectDelay: 1,    // 1 second initial delay
 		MaxReconnectDelay:     3600, // 1 hour maximum delay
 		HeartbeatInterval:     30,
+		TLSSkipVerify:         true,
 	}
 }
 
@@ -371,9 +377,18 @@ func LoadConsoleConfig() (*ConsoleConfig, error) {
 	config := DefaultConsoleConfig()
 	var validationErrors []error
 
-	// Load and validate server address
-	config.ServerAddr = loader.GetString("NEXUS_SERVER", config.ServerAddr)
-	if err := loader.ValidateNetworkAddress("NEXUS_SERVER", config.ServerAddr); err != nil {
+	// Load and validate server address (console uses mTLS port)
+	config.ServerAddr = loader.GetString("NEXUS_CONSOLE_SERVER", config.ServerAddr)
+	if config.ServerAddr == loader.GetString("NEXUS_CONSOLE_SERVER", "") {
+		// If NEXUS_CONSOLE_SERVER is not set, fall back to NEXUS_SERVER but use console port
+		if nexusServer := loader.GetString("NEXUS_SERVER", ""); nexusServer != "" {
+			// Replace port with console port if needed
+			if nexusServer == "localhost:11972" {
+				config.ServerAddr = "localhost:11973"
+			}
+		}
+	}
+	if err := loader.ValidateNetworkAddress("NEXUS_CONSOLE_SERVER", config.ServerAddr); err != nil {
 		validationErrors = append(validationErrors, err)
 	}
 
@@ -389,6 +404,20 @@ func LoadConsoleConfig() (*ConsoleConfig, error) {
 		validationErrors = append(validationErrors, err)
 	} else {
 		config.Debug = debug
+	}
+
+	// Load TLS configuration - for console mTLS, certificate validation is mandatory
+	// TLS_SKIP_VERIFY is deprecated for console connections but kept for backward compatibility
+	if tlsSkipVerify, err := loader.GetBool("TLS_SKIP_VERIFY", config.TLSSkipVerify); err != nil {
+		validationErrors = append(validationErrors, err)
+	} else {
+		if tlsSkipVerify {
+			if loader.logger != nil {
+				loader.logger.Warn("TLS_SKIP_VERIFY=true is deprecated for console mTLS connections and will be ignored")
+			}
+		}
+		// Always enforce certificate validation for console mTLS
+		config.TLSSkipVerify = false
 	}
 
 	// Handle manual flag parsing for console (to avoid conflicts with other flag parsers)
@@ -426,6 +455,9 @@ func LoadConsoleConfig() (*ConsoleConfig, error) {
 						})
 					}
 				}
+			case "-tls-skip-verify", "--tls-skip-verify":
+				// Deprecated flag for console mTLS - log warning but don't apply
+				fmt.Fprintf(os.Stderr, "Warning: -tls-skip-verify is deprecated for console mTLS connections and will be ignored\n")
 			}
 		}
 	}
@@ -458,6 +490,13 @@ func LoadNexusConfig() (*NexusConfig, error) {
 		validationErrors = append(validationErrors, err)
 	} else {
 		config.Port = port
+	}
+
+	// Load and validate console port
+	if consolePort, err := loader.GetIntInRange("NEXUS_CONSOLE_PORT", config.ConsolePort, 0, 65535); err != nil {
+		validationErrors = append(validationErrors, err)
+	} else {
+		config.ConsolePort = consolePort
 	}
 
 	// Load database configuration
@@ -496,6 +535,7 @@ func LoadNexusConfig() (*NexusConfig, error) {
 
 	// Parse command line flags (highest priority)
 	port := flag.Int("port", config.Port, "Port to listen on")
+	consolePort := flag.Int("console-port", config.ConsolePort, "Console port for mTLS connections")
 	dbHost := flag.String("db-host", config.DBHost, "Database host")
 	dbPort := flag.Int("db-port", config.DBPort, "Database port")
 	dbUser := flag.String("db-user", config.DBUser, "Database user")
@@ -520,6 +560,16 @@ func LoadNexusConfig() (*NexusConfig, error) {
 		})
 	} else {
 		config.Port = *port
+	}
+
+	if *consolePort < 0 || *consolePort > 65535 {
+		validationErrors = append(validationErrors, ValidationError{
+			Field:   "console-port",
+			Value:   strconv.Itoa(*consolePort),
+			Message: "must be between 0 and 65535 (0 for system-assigned)",
+		})
+	} else {
+		config.ConsolePort = *consolePort
 	}
 
 	config.DBHost = *dbHost
@@ -611,6 +661,13 @@ func LoadMinionConfig() (*MinionConfig, error) {
 		config.HeartbeatInterval = heartbeat
 	}
 
+	// Load TLS configuration
+	if tlsSkipVerify, err := loader.GetBool("TLS_SKIP_VERIFY", config.TLSSkipVerify); err != nil {
+		validationErrors = append(validationErrors, err)
+	} else {
+		config.TLSSkipVerify = tlsSkipVerify
+	}
+
 	// Maintain backward compatibility with RECONNECT_DELAY
 	if reconnectDelay, err := loader.GetInt("RECONNECT_DELAY", -1); err == nil && reconnectDelay != -1 {
 		if reconnectDelay < 1 || reconnectDelay > 3600 {
@@ -635,6 +692,9 @@ func LoadMinionConfig() (*MinionConfig, error) {
 	initialReconnectDelay := flag.Int("initial-reconnect-delay", config.InitialReconnectDelay, "Initial reconnection delay in seconds (exponential backoff starting point)")
 	maxReconnectDelay := flag.Int("max-reconnect-delay", config.MaxReconnectDelay, "Maximum reconnection delay in seconds (exponential backoff cap)")
 	heartbeatInterval := flag.Int("heartbeat-interval", config.HeartbeatInterval, "Heartbeat interval in seconds")
+
+	// TLS flags
+	tlsSkipVerify := flag.Bool("tls-skip-verify", config.TLSSkipVerify, "Skip TLS certificate verification")
 
 	// Maintain backward compatibility with the old reconnect-delay flag
 	reconnectDelay := flag.Int("reconnect-delay", -1, "Reconnection delay in seconds (deprecated, use initial-reconnect-delay and max-reconnect-delay)")
@@ -691,6 +751,8 @@ func LoadMinionConfig() (*MinionConfig, error) {
 		config.HeartbeatInterval = *heartbeatInterval
 	}
 
+	config.TLSSkipVerify = *tlsSkipVerify
+
 	// Handle backward compatibility with old reconnect-delay flag
 	if *reconnectDelay != -1 {
 		if *reconnectDelay < 1 || *reconnectDelay > 3600 {
@@ -740,6 +802,7 @@ func (c *NexusConfig) DBConnectionString() string {
 func (c *NexusConfig) LogConfig(logger *zap.Logger) {
 	logger.Info("Configuration loaded",
 		zap.Int("port", c.Port),
+		zap.Int("console_port", c.ConsolePort),
 		zap.String("db_host", c.DBHost),
 		zap.Int("db_port", c.DBPort),
 		zap.String("db_name", c.DBName),
@@ -758,7 +821,8 @@ func (c *MinionConfig) LogConfig(logger *zap.Logger) {
 		zap.Int("connect_timeout", c.ConnectTimeout),
 		zap.Int("initial_reconnect_delay", c.InitialReconnectDelay),
 		zap.Int("max_reconnect_delay", c.MaxReconnectDelay),
-		zap.Int("heartbeat_interval", c.HeartbeatInterval))
+		zap.Int("heartbeat_interval", c.HeartbeatInterval),
+		zap.Bool("tls_skip_verify", c.TLSSkipVerify))
 }
 
 // LogConfig logs the console configuration
@@ -766,5 +830,6 @@ func (c *ConsoleConfig) LogConfig(logger *zap.Logger) {
 	logger.Info("Configuration loaded",
 		zap.String("server", c.ServerAddr),
 		zap.Int("connect_timeout", c.ConnectTimeout),
-		zap.Bool("debug", c.Debug))
+		zap.Bool("debug", c.Debug),
+		zap.Bool("tls_skip_verify", c.TLSSkipVerify))
 }

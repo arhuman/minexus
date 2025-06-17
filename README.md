@@ -3,9 +3,9 @@
 ```
 ⚠️ This code is not ready for production ⚠️
 The API, features, configuration are subject to changes.
-This software lack the basic security features needed for production
-(No TLS encryption/authentication, no minions input sanitization...)
-⚠️i This code is not ready for production ⚠️
+This software lacks some security features needed for production
+(no minions input sanitization, resource limiting...)
+⚠️ This code is not ready for production ⚠️
 ```
 
 Minexus is a Remote Administration Tool (RAT)
@@ -19,6 +19,7 @@ You can use it:
 It's current features include:
 
 - **gRPC Communication**: High-performance, cross-platform RPC
+- **TLS Encryption**: Secure communication between all components
 - **Tag-based Targeting**: Flexible minion selection using tags
 - **Real-time Command Streaming**: Live command delivery to minions
 - **Command Result Tracking**: Complete audit trail of command execution
@@ -82,6 +83,59 @@ For detailed configuration options, see [documentation/CONFIGURATION.md](documen
 
 For detailed version handling information, see [documentation/VERSION.md](documentation/VERSION.md).
 
+### TLS Configuration
+
+Minexus supports TLS encryption for secure communication between all components. TLS can be enabled using configuration files, environment variables, or command-line flags.
+
+#### TLS Certificates (Embedded at Build Time)
+
+TLS encryption is mandatory for all Minexus components. Certificates are embedded directly into the binaries at build time for security and simplicity.
+
+#### Generating TLS Certificates for Development
+
+For development builds, certificates are embedded from `internal/certs/`. Use OpenSSL to generate them:
+
+```bash
+# Certificate generation is handled by the certificate generation script
+# See documentation/CERTIFICATE_GENERATION.md for details
+
+# Rebuild binaries to embed the new certificates
+make build
+```
+
+**Important:** For production environments, replace the certificates in `internal/certs/` with certificates signed by a trusted Certificate Authority (CA) before building.
+
+#### TLS Configuration Options
+
+**Environment Variables:**
+```bash
+# Skip certificate verification (default: true for development convenience)
+TLS_SKIP_VERIFY=true
+```
+
+**Command Line Flags:**
+```bash
+# Enable certificate verification (for production with CA-signed certificates)
+# Note: Certificate verification is disabled by default for development ease
+# No flag needed for default behavior (skip verification)
+```
+
+**Configuration File (.env):**
+```bash
+# Skip certificate verification (default: true)
+# Set to false only when using CA-signed certificates in production
+TLS_SKIP_VERIFY=true
+```
+
+**Production Note:** For production environments with CA-signed certificates, set `TLS_SKIP_VERIFY=false` to enable certificate verification.
+
+#### Security Notes
+
+- **Certificate Management**: In production, use certificates from a trusted CA
+- **Private Key Security**: Protect private key files with appropriate file permissions (`chmod 600`)
+- **Certificate Verification**: Only use `TLS_SKIP_VERIFY=true` in development environments
+- **Certificate Rotation**: Plan for regular certificate renewal and rotation
+
 
 ## Architecture
 
@@ -144,22 +198,22 @@ For development you also need
 ### Running binaries
 
 ```bash
-# Build all components
+# Build all components (embeds TLS certificates)
 go build -o nexus ./cmd/nexus
 go build -o minion ./cmd/minion
 go build -o console ./cmd/console
 
-# Start Nexus server (uses defaults)
+# Start Nexus server (TLS is mandatory, certificates embedded in binary)
 nohup ./nexus > nexus.log &
 
-# In another terminal, start a Minion client (uses defaults)
+# In another terminal, start a Minion client (TLS is mandatory)
 nohup ./minion > minion.log &
 
-# In another terminal, start the Console client (uses defaults)
+# In another terminal, start the Console client (TLS is mandatory)
 ./console
 ```
 
-That's it! The system will use sensible defaults and work immediately.
+**Note:** TLS encryption is mandatory and certificates are embedded at build time. No external certificate files are required at runtime.
 
 ## Running containers (Docker compose)
 
