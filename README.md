@@ -11,10 +11,36 @@ This software lacks some security features needed for production
 Minexus is a Remote Administration Tool (RAT)
 It's made of a central Nexus server, (multiple) Minion clients(s), and a Console client for administration..
 You can use it:
-- for remote deployment/execution tool (like ansible)
-- for monitoring purpose
-- for security purpose
-- ... (tell us!)
+* for remote deployment/execution tool (like ansible)
+* for monitoring purpose
+* for security purpose
+* ... (tell us!)
+
+Exemple of currently implemented commands:
+Tag Management:
+
+* tag-set <minion-id> <key>=<value> [...]    - Set tags for a minion (replaces all)
+* tag-update <minion-id> +<key>=<value> -<key> [...] - Update tags for a minion
+* tag-list, lt                               - List all available tags
+
+Command management:
+
+*  command-send all <cmd>                     - Send command to all minions
+*  command-send minion <id> <cmd>             - Send command to specific minion
+*  command-send tag <key>=<value> <cmd>       - Send command to minions with tag
+*  command-status all                         - Show status breakdown of all commands
+*  command-status minion <id>                 - Show detailed status of commands for a minion
+*  command-status stats                       - Show command execution statistics by minion
+*  result-get <cmd-id>                        - Get results for a command ID
+
+Where <cmd> can be:
+
+* Any shell command 
+* A built-in file command
+* A built-in system command (os, status)
+* ...
+
+
 
 It's current features include:
 
@@ -141,7 +167,7 @@ TLS_SKIP_VERIFY=true
 
 ```
 ┌─────────────┐    gRPC     ┌─────────────┐    PostgreSQL    ┌──────────────┐
-│   Console   │◄──────────►│    Nexus    │◄─────────────────│   Database   │
+│   Console   │◄───────────►│    Nexus    │◄─────────────────│   Database   │
 │   Client    │             │   Server    │                  │              │
 └─────────────┘             └─────────────┘                  └──────────────┘
                                    ▲
