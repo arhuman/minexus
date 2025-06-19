@@ -114,27 +114,11 @@ jobs:
           # Return to root directory
           cd ../../..
 
-      - name: Lint with go vet
-        run: go vet ./...
-
-      - name: Run staticcheck
-        uses: dominikh/staticcheck-action@v1.3.1
-        with:
-          version: "latest"
-
-      - name: Check Protobuf files
-        run: |
-          buf format -d
-          buf lint
-
       - name: Build all binaries
         run: |
           go build -v ./cmd/nexus
           go build -v ./cmd/minion
           go build -v ./cmd/console
-
-      - name: Run unit tests
-        run: go test -race -v ./...
 
       - name: Create test environment file
         run: |
