@@ -32,7 +32,6 @@ type mockMinionServiceClient struct {
 	assignedID          string
 	streamError         bool
 	commandsToSend      []*pb.Command
-	commandIndex        int
 	mu                  sync.Mutex
 	receivedResults     []*pb.CommandResult
 	receivedStatuses    []*pb.CommandStatusUpdate
@@ -306,9 +305,8 @@ func TestMinionRegistrationSuccess(t *testing.T) {
 	minion.Stop()
 
 	// Verify registration was attempted (this test mainly checks that registration doesn't crash)
-	if len(client.receivedResults) < 0 {
-		t.Error("Registration should have been attempted")
-	}
+	// len() always returns >= 0, so this check is simplified
+	_ = len(client.receivedResults) // Just verify the slice is accessible
 }
 
 func TestMinionRegistrationFailure(t *testing.T) {

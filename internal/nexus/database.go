@@ -37,13 +37,12 @@ func NewDatabaseService(db *sql.DB, logger *zap.Logger) *DatabaseServiceImpl {
 
 // StoreHost persists host information to the database.
 func (d *DatabaseServiceImpl) StoreHost(ctx context.Context, hostInfo *pb.HostInfo) error {
-	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.StoreHost")
-	defer logging.FuncExit(logger, start)
-
 	if d == nil || d.db == nil {
-		logger.Debug("Database not available, gracefully degrading")
 		return nil // Graceful degradation when database is not available
 	}
+
+	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.StoreHost")
+	defer logging.FuncExit(logger, start)
 
 	// Store in hosts table using simplified schema
 	tagsJSON, err := json.Marshal(hostInfo.Tags)
@@ -75,13 +74,12 @@ func (d *DatabaseServiceImpl) StoreHost(ctx context.Context, hostInfo *pb.HostIn
 
 // UpdateHost updates existing host information in the database.
 func (d *DatabaseServiceImpl) UpdateHost(ctx context.Context, hostInfo *pb.HostInfo) error {
-	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.UpdateHost")
-	defer logging.FuncExit(logger, start)
-
 	if d == nil || d.db == nil {
-		logger.Debug("Database not available, gracefully degrading")
 		return nil // Graceful degradation when database is not available
 	}
+
+	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.UpdateHost")
+	defer logging.FuncExit(logger, start)
 
 	tagsJSON, err := json.Marshal(hostInfo.Tags)
 	if err != nil {
@@ -112,13 +110,12 @@ func (d *DatabaseServiceImpl) UpdateHost(ctx context.Context, hostInfo *pb.HostI
 
 // StoreCommand persists command information to the database.
 func (d *DatabaseServiceImpl) StoreCommand(ctx context.Context, commandID, minionID, payload string) error {
-	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.StoreCommand")
-	defer logging.FuncExit(logger, start)
-
 	if d == nil || d.db == nil {
-		logger.Debug("Database not available, gracefully degrading")
 		return nil // Graceful degradation when database is not available
 	}
+
+	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.StoreCommand")
+	defer logging.FuncExit(logger, start)
 
 	_, err := d.db.ExecContext(ctx,
 		"INSERT INTO commands (id, host_id, command, timestamp, direction, status) VALUES ($1, $2, $3, $4, $5, $6)",
@@ -142,13 +139,12 @@ func (d *DatabaseServiceImpl) StoreCommand(ctx context.Context, commandID, minio
 
 // UpdateCommandStatus updates the status of a command in the database.
 func (d *DatabaseServiceImpl) UpdateCommandStatus(ctx context.Context, commandID string, status string) error {
-	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.UpdateCommandStatus")
-	defer logging.FuncExit(logger, start)
-
 	if d == nil || d.db == nil {
-		logger.Debug("Database not available, gracefully degrading")
 		return nil
 	}
+
+	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.UpdateCommandStatus")
+	defer logging.FuncExit(logger, start)
 
 	result, err := d.db.ExecContext(ctx,
 		"UPDATE commands SET status = $1 WHERE id = $2",
@@ -184,14 +180,12 @@ func (d *DatabaseServiceImpl) UpdateCommandStatus(ctx context.Context, commandID
 
 // StoreCommandResult persists command execution results to the database.
 func (d *DatabaseServiceImpl) StoreCommandResult(ctx context.Context, result *pb.CommandResult) error {
+	if d == nil || d.db == nil {
+		return nil // Graceful degradation when database is not available
+	}
 
 	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.StoreCommandResult")
 	defer logging.FuncExit(logger, start)
-
-	if d == nil || d.db == nil {
-		logger.Debug("Database not available, gracefully degrading")
-		return nil // Graceful degradation when database is not available
-	}
 
 	// Check if command exists in commands table first
 	var cmdExists bool
@@ -256,17 +250,16 @@ func (d *DatabaseServiceImpl) StoreCommandResult(ctx context.Context, result *pb
 
 // GetCommandResults retrieves all results for a specific command.
 func (d *DatabaseServiceImpl) GetCommandResults(ctx context.Context, commandID string) ([]*pb.CommandResult, error) {
-	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.GetCommandResults")
-	defer logging.FuncExit(logger, start)
-
 	if d == nil {
-		logger.Error("DatabaseServiceImpl is nil")
 		return []*pb.CommandResult{}, fmt.Errorf("DatabaseServiceImpl is nil")
 	}
 
+	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.GetCommandResults")
+	defer logging.FuncExit(logger, start)
+
 	if d.db == nil {
 		logger.Error("Database connection is nil")
-		return []*pb.CommandResult{}, fmt.Errorf("Database connection is nil")
+		return []*pb.CommandResult{}, fmt.Errorf("database connection is nil")
 	}
 
 	logger.Info("Attempting to retrieve command results from database",
@@ -329,13 +322,12 @@ func (d *DatabaseServiceImpl) GetCommandResults(ctx context.Context, commandID s
 // updateHostTags updates the tags for a host in the database.
 // This is a helper method used by the registry for tag operations.
 func (d *DatabaseServiceImpl) updateHostTags(ctx context.Context, minionID string, hostInfo *pb.HostInfo) error {
-	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.updateHostTags")
-	defer logging.FuncExit(logger, start)
-
 	if d == nil || d.db == nil {
-		logger.Debug("Database not available, gracefully degrading")
 		return nil // Graceful degradation when database is not available
 	}
+
+	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.updateHostTags")
+	defer logging.FuncExit(logger, start)
 
 	tagsJSON, err := json.Marshal(hostInfo.Tags)
 	if err != nil {

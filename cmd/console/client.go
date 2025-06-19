@@ -55,17 +55,13 @@ func NewGRPCClient(cfg *config.ConsoleConfig, logger *zap.Logger) (*GRPCClient, 
 	logger.Info("mTLS credentials configured for console client",
 		zap.String("server_name", tlsConfig.ServerName))
 
-	// Create connection context with timeout
-	connectTimeout := time.Duration(cfg.ConnectTimeout) * time.Second
-	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
-	defer cancel()
-
-	// Prepare dial options (using modern gRPC pattern)
-	dialOpts := []grpc.DialOption{
+	// Create connection using modern gRPC pattern with timeout
+	conn, err := grpc.NewClient(cfg.ServerAddr,
 		grpc.WithTransportCredentials(creds),
-	}
-
-	conn, err := grpc.DialContext(ctx, cfg.ServerAddr, dialOpts...)
+		grpc.WithConnectParams(grpc.ConnectParams{
+			MinConnectTimeout: time.Duration(cfg.ConnectTimeout) * time.Second,
+		}),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to server: %w", err)
 	}

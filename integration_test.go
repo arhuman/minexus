@@ -1072,7 +1072,7 @@ func TestConsoleInput(t *testing.T) {
 				output.WriteString(scanner.Text() + "\n")
 			}
 
-			err = cmd.Wait()
+			_ = cmd.Wait()
 			// Console might exit with non-zero code, that's OK
 
 			outputStr := output.String()
