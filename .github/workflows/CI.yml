@@ -134,7 +134,7 @@ jobs:
           DBSSLMODE=disable
           MAX_MSG_SIZE=10485760
           FILEROOT=/tmp
-          MINION_ID=test-minion-ci
+          MINION_ID=minion-docker-01
           CONNECT_TIMEOUT=3
           INITIAL_RECONNECT_DELAY=1
           MAX_RECONNECT_DELAY=3600
