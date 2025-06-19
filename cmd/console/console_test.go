@@ -26,7 +26,7 @@ type mockConsoleServiceClient struct {
 	minions         []*pb.HostInfo
 	tags            []string
 	commandAccepted bool
-	commandId       string
+	commandID       string
 	results         []*pb.CommandResult
 	tagSuccess      bool
 }
@@ -67,7 +67,7 @@ func (m *mockConsoleServiceClient) SendCommand(ctx context.Context, req *pb.Comm
 		return &pb.CommandDispatchResponse{Accepted: false}, fmt.Errorf("command payload is empty")
 	}
 
-	return &pb.CommandDispatchResponse{Accepted: m.commandAccepted, CommandId: m.commandId}, nil
+	return &pb.CommandDispatchResponse{Accepted: m.commandAccepted, CommandId: m.commandID}, nil
 }
 
 func (m *mockConsoleServiceClient) GetCommandResults(ctx context.Context, req *pb.ResultRequest, opts ...grpc.CallOption) (*pb.CommandResults, error) {
@@ -319,7 +319,7 @@ func TestHandleCommand(t *testing.T) {
 		minions:         []*pb.HostInfo{{Id: "test123", Hostname: "testhost", Ip: "192.168.1.1", Os: "linux"}},
 		tags:            []string{"env=prod", "role=web"},
 		commandAccepted: true,
-		commandId:       "cmd-123",
+		commandID:       "cmd-123",
 		tagSuccess:      true,
 	}
 	console := createMockConsole(mockClient)
@@ -472,7 +472,7 @@ func TestSendCommand(t *testing.T) {
 	t.Run("new_syntax_all", func(t *testing.T) {
 		mockClient := &mockConsoleServiceClient{
 			commandAccepted: true,
-			commandId:       "cmd-123",
+			commandID:       "cmd-123",
 		}
 		console := createMockConsole(mockClient)
 		defer console.Shutdown()

@@ -141,8 +141,8 @@ run: build
 
 ## test: run tests with coverage (set SLOW_TESTS=1 to include integration tests)
 test:
+	go run honnef.co/go/tools/cmd/staticcheck@latest -checks=all,-ST1000,-U1000 ./...
 	./run_tests.sh
-#	staticcheck ./...
 
 ## cover: run tests with coverage and display detailed results (set SLOW_TESTS=1 to include integration tests)
 .PHONY: cover

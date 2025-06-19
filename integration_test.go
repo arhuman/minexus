@@ -510,7 +510,7 @@ func testShellCommands(t *testing.T) {
 					continue
 				}
 
-				actualResults := getNbResultsInDb(t, commandID)
+				actualResults := getNbResultsInDB(t, commandID)
 				if actualResults > 0 {
 					resultsFound[commandID] = true
 					foundCount++
@@ -661,7 +661,7 @@ func testFileCommands(t *testing.T) {
 					continue
 				}
 
-				actualResults := getNbResultsInDb(t, commandID)
+				actualResults := getNbResultsInDB(t, commandID)
 				if actualResults > 0 {
 					resultsFound[commandID] = true
 					foundCount++
@@ -790,7 +790,7 @@ func testSystemCommands(t *testing.T) {
 					continue
 				}
 
-				actualResults := getNbResultsInDb(t, commandID)
+				actualResults := getNbResultsInDB(t, commandID)
 				if actualResults > 0 {
 					resultsFound[commandID] = true
 					foundCount++
@@ -977,7 +977,7 @@ func verifyCommandInDB(t *testing.T, commandID string) {
 }
 
 // getNbResultsInDb returns the actual count of results for a command in the command_results table
-func getNbResultsInDb(t *testing.T, commandID string) int {
+func getNbResultsInDB(t *testing.T, commandID string) int {
 	db, err := sql.Open("postgres", dbConnString)
 	require.NoError(t, err, "Should connect to database")
 	defer db.Close()

@@ -18,6 +18,7 @@ import (
 )
 
 // Console represents the interactive console
+
 // CommandStatus tracks the status of a command for each minion
 type CommandStatus struct {
 	CommandID string
