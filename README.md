@@ -7,6 +7,9 @@ This software lacks some security features needed for production
 (no minions input sanitization, resource limiting...)
 ⚠️ This code is not ready for production ⚠️
 ```
+[![Go Report Card](https://goreportcard.com/badge/github.com/arhuman/minexus)](https://goreportcard.com/report/github.com/arhuman/minexus)
+[![Build](https://github.com/arhuman/minexus/actions/workflows/CI.yml/badge.svg)](https://github.com/arhuman/minexus/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Minexus is a Remote Administration Tool (RAT)
 It's made of a central Nexus server, (multiple) Minion clients(s), and a Console client for administration..
