@@ -492,7 +492,7 @@ func LoadConsoleConfig() (*ConsoleConfig, error) {
 		for _, err := range validationErrors {
 			errMsg.WriteString(fmt.Sprintf("  - %s\n", err.Error()))
 		}
-		return nil, fmt.Errorf(errMsg.String())
+		return nil, fmt.Errorf("%s", errMsg.String())
 	}
 
 	return config, nil
@@ -627,7 +627,7 @@ func LoadNexusConfig() (*NexusConfig, error) {
 		for _, err := range validationErrors {
 			errMsg.WriteString(fmt.Sprintf("  - %s\n", err.Error()))
 		}
-		return nil, fmt.Errorf(errMsg.String())
+		return nil, fmt.Errorf("%s", errMsg.String())
 	}
 
 	return config, nil
@@ -816,7 +816,7 @@ func LoadMinionConfig() (*MinionConfig, error) {
 		for _, err := range validationErrors {
 			errMsg.WriteString(fmt.Sprintf("  - %s\n", err.Error()))
 		}
-		return nil, fmt.Errorf(errMsg.String())
+		return nil, fmt.Errorf("%s", errMsg.String())
 	}
 
 	return config, nil

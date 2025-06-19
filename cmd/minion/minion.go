@@ -46,13 +46,6 @@ func setupLogger(debug bool) (*zap.Logger, zap.AtomicLevel, error) {
 
 // setupGRPCConnection establishes connection to the server
 func setupGRPCConnection(cfg *config.MinionConfig, logger *zap.Logger) (*grpc.ClientConn, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.ConnectTimeout)*time.Second)
-	defer cancel()
-
-	// Prepare dial options
-	var dialOpts []grpc.DialOption
-	dialOpts = append(dialOpts, grpc.WithBlock())
-
 	// Configure TLS credentials (mandatory, embedded)
 	logger.Info("Configuring embedded TLS for minion client",
 		zap.Bool("skip_verify", cfg.TLSSkipVerify))
@@ -69,22 +62,22 @@ func setupGRPCConnection(cfg *config.MinionConfig, logger *zap.Logger) (*grpc.Cl
 	}
 
 	creds := credentials.NewTLS(tlsConfig)
-	dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 	logger.Info("Embedded TLS credentials configured for minion client")
 
-	// Add keepalive and backoff options
-	dialOpts = append(dialOpts,
+	// Create connection using modern gRPC pattern with timeout, keepalive and connection parameters
+	conn, err := grpc.NewClient(cfg.ServerAddr,
+		grpc.WithTransportCredentials(creds),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                60 * time.Second, // Send pings every 60 seconds
 			Timeout:             20 * time.Second, // Wait 20 seconds for ping ack
 			PermitWithoutStream: true,             // Allow pings even without active streams
 		}),
-		grpc.WithBackoffConfig(grpc.BackoffConfig{
-			MaxDelay: 5 * time.Second,
+		grpc.WithConnectParams(grpc.ConnectParams{
+			MinConnectTimeout: time.Duration(cfg.ConnectTimeout) * time.Second,
 		}),
 	)
 
-	return grpc.DialContext(ctx, cfg.ServerAddr, dialOpts...)
+	return conn, err
 }
 
 // checkVersionFlag checks if version flag was provided and prints version if so

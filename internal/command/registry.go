@@ -107,7 +107,7 @@ func (r *Registry) FormatHelp() string {
 	categories := r.GetCommandsByCategory()
 
 	for category, commands := range categories {
-		help.WriteString(fmt.Sprintf("--- %s Commands ---\n", strings.Title(category)))
+		help.WriteString(fmt.Sprintf("--- %s Commands ---\n", titleCase(category)))
 
 		for _, cmd := range commands {
 			metadata := cmd.Metadata()
@@ -176,4 +176,12 @@ func (r *Registry) FormatCommandHelp(commandName string) string {
 	}
 
 	return help.String()
+}
+
+// titleCase capitalizes the first letter of a string
+func titleCase(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }

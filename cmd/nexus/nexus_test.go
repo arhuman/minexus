@@ -397,12 +397,12 @@ func TestMainIntegration(t *testing.T) {
 
 	// 1. Use default configuration to avoid flag conflicts
 	cfg := config.DefaultNexusConfig()
-	cfg.Debug = true   // Set debug mode for testing
-	cfg.MinionPort = 0 // Use port 0 for testing
-
 	if cfg == nil {
 		t.Fatal("Failed to load configuration")
 	}
+
+	cfg.Debug = true   // Set debug mode for testing
+	cfg.MinionPort = 0 // Use port 0 for testing
 
 	// 2. Create logger
 	var logger *zap.Logger
@@ -1074,11 +1074,13 @@ func TestMainFunctionActual(t *testing.T) {
 
 		// Set environment variables for controlled testing
 		os.Setenv("DEBUG", "true")
-		os.Setenv("NEXUS_MINION_PORT", "0") // Use random available port
-		os.Setenv("DBHOST", "")             // No database for testing
+		os.Setenv("NEXUS_MINION_PORT", "0")  // Use random available port
+		os.Setenv("NEXUS_CONSOLE_PORT", "0") // Use random available port
+		os.Setenv("DBHOST", "")              // No database for testing
 		defer func() {
 			os.Unsetenv("DEBUG")
 			os.Unsetenv("NEXUS_MINION_PORT")
+			os.Unsetenv("NEXUS_CONSOLE_PORT")
 			os.Unsetenv("DBHOST")
 		}()
 
