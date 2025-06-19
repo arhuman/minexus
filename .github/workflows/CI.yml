@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1.46.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        run: go mod tidy
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Lint with go vet
+        run: go vet ./...
+
+      - name: Run staticcheck
+        uses: dominikh/staticcheck-action@v1.3.1
+        with:
+          version: "latest"
+
+      - name: Check Protobuf files
+        run: |
+          buf format -d
+          buf lint
+
+      - name: Build all binaries
+        run: |
+          go build -v ./cmd/nexus
+          go build -v ./cmd/minion
+          go build -v ./cmd/console
+
+      - name: Run unit tests
+        run: go test -race -v ./...
+
+      - name: Create test environment file
+        run: |
+          cat > .env << EOF
+          NEXUS_SERVER=localhost
+          NEXUS_MINION_PORT=11972
+          NEXUS_CONSOLE_PORT=11973
+          DBHOST=localhost
+          DBPORT=5432
+          DBUSER=postgres
+          DBPASS=postgres
+          DBNAME=minexus
+          DBSSLMODE=disable
+          MAX_MSG_SIZE=10485760
+          FILEROOT=/tmp
+          MINION_ID=test-minion-ci
+          CONNECT_TIMEOUT=3
+          INITIAL_RECONNECT_DELAY=1
+          MAX_RECONNECT_DELAY=3600
+          HEARTBEAT_INTERVAL=60
+          DEBUG=false
+          EOF
+
+      - name: Run integration tests with Docker services
+        run: |
+          # Start required services
+          docker compose up -d nexus_db
+          sleep 15
+          docker compose up -d nexus
+          sleep 15
+
+          # Run integration tests
+          SLOW_TESTS=1 make test
+
+          # Cleanup
+          docker compose down
+
+      - name: Upload coverage reports
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage.out
+            coverage.html
