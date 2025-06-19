@@ -47,8 +47,7 @@ func setupLogger(debug bool) (*zap.Logger, zap.AtomicLevel, error) {
 // setupGRPCConnection establishes connection to the server
 func setupGRPCConnection(cfg *config.MinionConfig, logger *zap.Logger) (*grpc.ClientConn, error) {
 	// Configure TLS credentials (mandatory, embedded)
-	logger.Info("Configuring embedded TLS for minion client",
-		zap.Bool("skip_verify", cfg.TLSSkipVerify))
+	logger.Info("Configuring embedded TLS for minion client")
 
 	cert, err := tls.X509KeyPair(certs.CertPEM, certs.KeyPEM)
 	if err != nil {
@@ -58,7 +57,7 @@ func setupGRPCConnection(cfg *config.MinionConfig, logger *zap.Logger) (*grpc.Cl
 
 	tlsConfig := &tls.Config{
 		Certificates:       []tls.Certificate{cert},
-		InsecureSkipVerify: cfg.TLSSkipVerify,
+		InsecureSkipVerify: false,
 	}
 
 	creds := credentials.NewTLS(tlsConfig)

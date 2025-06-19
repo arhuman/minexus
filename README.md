@@ -134,35 +134,10 @@ make build
 
 **Important:** For production environments, replace the certificates in `internal/certs/` with certificates signed by a trusted Certificate Authority (CA) before building.
 
-#### TLS Configuration Options
-
-**Environment Variables:**
-```bash
-# Skip certificate verification (default: true for development convenience)
-TLS_SKIP_VERIFY=true
-```
-
-**Command Line Flags:**
-```bash
-# Enable certificate verification (for production with CA-signed certificates)
-# Note: Certificate verification is disabled by default for development ease
-# No flag needed for default behavior (skip verification)
-```
-
-**Configuration File (.env):**
-```bash
-# Skip certificate verification (default: true)
-# Set to false only when using CA-signed certificates in production
-TLS_SKIP_VERIFY=true
-```
-
-**Production Note:** For production environments with CA-signed certificates, set `TLS_SKIP_VERIFY=false` to enable certificate verification.
-
 #### Security Notes
 
 - **Certificate Management**: In production, use certificates from a trusted CA
 - **Private Key Security**: Protect private key files with appropriate file permissions (`chmod 600`)
-- **Certificate Verification**: Only use `TLS_SKIP_VERIFY=true` in development environments
 - **Certificate Rotation**: Plan for regular certificate renewal and rotation
 
 
