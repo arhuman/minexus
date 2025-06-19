@@ -19,24 +19,24 @@ You can use it:
 Exemple of currently implemented commands:
 Tag Management:
 
-* tag-set <minion-id> <key>=<value> [...]    - Set tags for a minion (replaces all)
-* tag-update <minion-id> +<key>=<value> -<key> [...] - Update tags for a minion
+* tag-set \<minion-id\> \<key\>=\<value\> \[...\]    - Set tags for a minion (replaces all)
+* tag-update \<minion-id\> +\<key\>=\<value\> -\<key\> \[...\] - Update tags for a minion
 * tag-list, lt                               - List all available tags
 
 Command management:
 
-*  command-send all <cmd>                     - Send command to all minions
-*  command-send minion <id> <cmd>             - Send command to specific minion
-*  command-send tag <key>=<value> <cmd>       - Send command to minions with tag
+*  command-send all \<cmd\>                     - Send command to all minions
+*  command-send minion \<id\> \<cmd\>             - Send command to specific minion
+*  command-send tag \<key\>=\<value\> \<cmd\>       - Send command to minions with tag
 *  command-status all                         - Show status breakdown of all commands
-*  command-status minion <id>                 - Show detailed status of commands for a minion
+*  command-status minion \<id\>                 - Show detailed status of commands for a minion
 *  command-status stats                       - Show command execution statistics by minion
-*  result-get <cmd-id>                        - Get results for a command ID
+*  result-get \<cmd-id\>                        - Get results for a command ID
 
-Where <cmd> can be:
+Where \<cmd\> can be:
 
-* Any shell command 
-* A built-in file command
+* Any shell command ⚠️ This command is not filtered in any way, and may be deprecated in future release for security reason ⚠️
+* A built-in file command (get, copy, move, info)
 * A built-in system command (os, status)
 * ...
 
