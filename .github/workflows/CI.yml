@@ -18,11 +18,31 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.23"
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
 
       - name: Install buf
         uses: bufbuild/buf-setup-action@v1.46.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache buf
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/buf
+          key: ${{ runner.os }}-buf-${{ hashFiles('**/buf.yaml', '**/buf.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-buf-
 
       - name: Install dependencies
         run: go mod tidy
@@ -30,7 +50,17 @@ jobs:
       - name: Verify dependencies
         run: go mod verify
 
+      - name: Cache certificates
+        id: cache-certs
+        uses: actions/cache@v4
+        with:
+          path: internal/certs/files
+          key: ${{ runner.os }}-certs-v1-${{ hashFiles('documentation/CERTIFICATE_GENERATION.md') }}
+          restore-keys: |
+            ${{ runner.os }}-certs-v1-
+
       - name: Generate certificates for mTLS
+        if: steps.cache-certs.outputs.cache-hit != 'true'
         run: |
           # Step 1: Generate Certificate Authority
           # Create certificate files directory
@@ -141,6 +171,17 @@ jobs:
           HEARTBEAT_INTERVAL=60
           DEBUG=false
           EOF
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker images
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
 
       - name: Run integration tests with Docker services
         run: |
