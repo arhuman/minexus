@@ -142,6 +142,7 @@ run: build
 ## test: run tests with coverage (set SLOW_TESTS=1 to include integration tests)
 test:
 	./run_tests.sh
+#	staticcheck ./...
 
 ## cover: run tests with coverage and display detailed results (set SLOW_TESTS=1 to include integration tests)
 .PHONY: cover
