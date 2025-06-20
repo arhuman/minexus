@@ -72,13 +72,13 @@ Send commands to minions:
 
 ```bash
 # Send to all minions
-command-send ls -la
+command-send all ls -la
 
 # Send to specific minion
-command-send -m <minion-id> ls -la
+command-send minion <minion-id> ls -la
 
 # Send to minions with specific tag
-command-send -t environment=production uptime
+command-send tag environment=production uptime
 ```
 
 Get command results:
@@ -142,8 +142,8 @@ tag-update <minion-id> +new_env=test -old_env
 
 2. Send commands to specific environments:
    ```bash
-   minexus> command-send -t environment=production systemctl status nginx
-   minexus> command-send -t role=database ps aux | grep postgres
+   minexus> command-send tag environment=production systemctl status nginx
+   minexus> command-send tag role=database ps aux | grep postgres
    ```
 
 ### Advanced Tag Management

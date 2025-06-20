@@ -109,7 +109,7 @@ type NexusConfig struct {
 - `FILEROOT` - File root directory (default: "/tmp")
 
 **Command Line Flags:**
-- `-port` - Minion server listening port
+- `-minion-port` - Minion server listening port
 - `-console-port` - Console server listening port (mTLS)
 - `-db-host` - Database host
 - `-db-port` - Database port
@@ -146,7 +146,6 @@ type MinionConfig struct {
 - `INITIAL_RECONNECT_DELAY` - Initial reconnection delay (default: 1, range: 1-3600)
 - `MAX_RECONNECT_DELAY` - Maximum reconnection delay (default: 3600, range: 1-86400)
 - `HEARTBEAT_INTERVAL` - Heartbeat interval (default: 60, range: 5-300)
-- `RECONNECT_DELAY` - Legacy reconnection delay (deprecated, sets both initial and max)
 
 **Command Line Flags:**
 - `-server` - Nexus server address (backward compatible with host:port format)
@@ -156,7 +155,6 @@ type MinionConfig struct {
 - `-initial-reconnect-delay` - Initial reconnection delay
 - `-max-reconnect-delay` - Maximum reconnection delay
 - `-heartbeat-interval` - Heartbeat interval
-- `-reconnect-delay` - Legacy reconnection delay (deprecated)
 
 ## Configuration File Format
 

@@ -332,7 +332,6 @@ type NexusConfig struct {
 	Debug              bool
 	MaxMsgSize         int
 	FileRoot           string
-	LegacyDBConnString string // For backward compatibility with -db flag
 }
 
 // MinionConfig holds configuration for Minion clients
@@ -548,8 +547,6 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	maxMsgSize := flag.Int("max-msg-size", config.MaxMsgSize, "Maximum message size in bytes")
 	fileRoot := flag.String("file-root", config.FileRoot, "File root directory")
 
-	// Legacy flag for backward compatibility
-	dbConnString := flag.String("db", "", "Database connection string (legacy, overrides individual db settings)")
 
 	flag.Parse()
 
@@ -594,10 +591,6 @@ func LoadNexusConfig() (*NexusConfig, error) {
 
 	config.FileRoot = *fileRoot
 
-	// Handle legacy db connection string flag
-	if *dbConnString != "" {
-		config.LegacyDBConnString = *dbConnString
-	}
 
 	// Return validation errors if any
 	if len(validationErrors) > 0 {
@@ -672,21 +665,6 @@ func LoadMinionConfig() (*MinionConfig, error) {
 		config.HeartbeatInterval = heartbeat
 	}
 
-	// Maintain backward compatibility with RECONNECT_DELAY
-	if reconnectDelay, err := loader.GetInt("RECONNECT_DELAY", -1); err == nil && reconnectDelay != -1 {
-		if reconnectDelay < 1 || reconnectDelay > 3600 {
-			validationErrors = append(validationErrors, ValidationError{
-				Field:   "RECONNECT_DELAY",
-				Value:   strconv.Itoa(reconnectDelay),
-				Message: "must be between 1 and 3600 seconds",
-			})
-		} else {
-			config.InitialReconnectDelay = reconnectDelay
-			config.MaxReconnectDelay = reconnectDelay
-		}
-	} else if err != nil {
-		validationErrors = append(validationErrors, err)
-	}
 
 	// Parse command line flags (highest priority)
 	serverAddr := flag.String("server", config.ServerAddr, "Nexus server address")
@@ -697,8 +675,6 @@ func LoadMinionConfig() (*MinionConfig, error) {
 	maxReconnectDelay := flag.Int("max-reconnect-delay", config.MaxReconnectDelay, "Maximum reconnection delay in seconds (exponential backoff cap)")
 	heartbeatInterval := flag.Int("heartbeat-interval", config.HeartbeatInterval, "Heartbeat interval in seconds")
 
-	// Maintain backward compatibility with the old reconnect-delay flag
-	reconnectDelay := flag.Int("reconnect-delay", -1, "Reconnection delay in seconds (deprecated, use initial-reconnect-delay and max-reconnect-delay)")
 
 	flag.Parse()
 
@@ -753,20 +729,6 @@ func LoadMinionConfig() (*MinionConfig, error) {
 		config.HeartbeatInterval = *heartbeatInterval
 	}
 
-	// Handle backward compatibility with old reconnect-delay flag
-	if *reconnectDelay != -1 {
-		if *reconnectDelay < 1 || *reconnectDelay > 3600 {
-			validationErrors = append(validationErrors, ValidationError{
-				Field:   "reconnect-delay",
-				Value:   strconv.Itoa(*reconnectDelay),
-				Message: "must be between 1 and 3600 seconds",
-			})
-		} else {
-			config.InitialReconnectDelay = *reconnectDelay
-			config.MaxReconnectDelay = *reconnectDelay
-		}
-	}
-
 	// Validate that initial delay is not greater than max delay
 	if config.InitialReconnectDelay > config.MaxReconnectDelay {
 		validationErrors = append(validationErrors, ValidationError{
@@ -791,9 +753,6 @@ func LoadMinionConfig() (*MinionConfig, error) {
 
 // DBConnectionString builds a PostgreSQL connection string from config
 func (c *NexusConfig) DBConnectionString() string {
-	if c.LegacyDBConnString != "" {
-		return c.LegacyDBConnString
-	}
 	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
 		c.DBUser, c.DBPassword, c.DBHost, c.DBPort, c.DBName, c.DBSSLMode)
 }
