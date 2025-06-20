@@ -21,8 +21,6 @@ type ParsedCommand struct {
 	Request     *pb.CommandRequest
 	CommandText string
 	CommandType pb.CommandType
-	IsLegacy    bool
-	Warning     string
 }
 
 // ParseCommand parses console command arguments into a structured command request
@@ -31,10 +29,6 @@ func (p *CommandParser) ParseCommand(args []string) (*ParsedCommand, error) {
 		return nil, fmt.Errorf("missing command arguments")
 	}
 
-	// Check for legacy syntax and show deprecation warning
-	if args[0] == "-m" || args[0] == "-t" {
-		return p.parseLegacyCommand(args)
-	}
 
 	// New syntax: command-send <target-type> [target-specifier] <command>
 	var req pb.CommandRequest
@@ -84,30 +78,7 @@ func (p *CommandParser) ParseCommand(args []string) (*ParsedCommand, error) {
 			return nil, fmt.Errorf("minion ID detected without target specifier. Did you mean: command-send minion %s %s", args[0], strings.Join(args[1:], " "))
 		}
 
-		// Assume legacy syntax without flags (command to all minions)
-		warning := fmt.Sprintf("DEPRECATED: Sending command to all minions without explicit 'all' target. Use instead: command-send all %s", strings.Join(args, " "))
-		commandStart = 0
-		result := &ParsedCommand{
-			Request:  &req,
-			IsLegacy: true,
-			Warning:  warning,
-		}
-
-		// Parse command and determine type
-		cmdText, cmdType := p.parseCommandAndType(args[commandStart:])
-		if cmdText == "" {
-			return nil, fmt.Errorf("command cannot be empty")
-		}
-
-		result.CommandText = cmdText
-		result.CommandType = cmdType
-		result.Request.Command = &pb.Command{
-			Id:      fmt.Sprintf("cmd-%d", time.Now().UnixNano()),
-			Type:    cmdType,
-			Payload: cmdText,
-		}
-
-		return result, nil
+		return nil, fmt.Errorf("invalid target type: %s. Use 'all', 'minion', or 'tag'", args[0])
 	}
 
 	// Parse command and determine type
@@ -126,67 +97,9 @@ func (p *CommandParser) ParseCommand(args []string) (*ParsedCommand, error) {
 		Request:     &req,
 		CommandText: cmdText,
 		CommandType: cmdType,
-		IsLegacy:    false,
 	}, nil
 }
 
-// parseLegacyCommand handles the old syntax for backward compatibility
-func (p *CommandParser) parseLegacyCommand(args []string) (*ParsedCommand, error) {
-	var req pb.CommandRequest
-	var commandStart int
-	var warning string
-
-	// Parse targeting options (legacy)
-	if len(args) >= 3 && args[0] == "-m" {
-		// Target specific minion
-		req.MinionIds = []string{args[1]}
-		commandStart = 2
-		warning = fmt.Sprintf("DEPRECATED: Legacy syntax detected! Use instead: command-send minion %s %s", args[1], strings.Join(args[2:], " "))
-	} else if len(args) >= 3 && args[0] == "-t" {
-		// Target by tag
-		tagParts := strings.SplitN(args[1], "=", 2)
-		if len(tagParts) != 2 {
-			return nil, fmt.Errorf("tag format should be key=value")
-		}
-
-		req.TagSelector = &pb.TagSelector{
-			Rules: []*pb.TagMatch{
-				{
-					Key: tagParts[0],
-					Condition: &pb.TagMatch_Equals{
-						Equals: tagParts[1],
-					},
-				},
-			},
-		}
-		commandStart = 2
-		warning = fmt.Sprintf("DEPRECATED: Legacy syntax detected! Use instead: command-send tag %s %s", args[1], strings.Join(args[2:], " "))
-	} else {
-		// Target all minions
-		commandStart = 0
-		warning = "DEPRECATED: Legacy syntax detected!"
-	}
-
-	// Build command string
-	cmdText := strings.Join(args[commandStart:], " ")
-	if cmdText == "" {
-		return nil, fmt.Errorf("command cannot be empty")
-	}
-
-	req.Command = &pb.Command{
-		Id:      fmt.Sprintf("cmd-%d", time.Now().UnixNano()),
-		Type:    pb.CommandType_SYSTEM,
-		Payload: cmdText,
-	}
-
-	return &ParsedCommand{
-		Request:     &req,
-		CommandText: cmdText,
-		CommandType: pb.CommandType_SYSTEM,
-		IsLegacy:    true,
-		Warning:     warning,
-	}, nil
-}
 
 // parseCommandAndType determines the command type and formats the payload
 func (p *CommandParser) parseCommandAndType(args []string) (string, pb.CommandType) {

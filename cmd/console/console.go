@@ -206,11 +206,6 @@ func (c *Console) sendCommand(ctx context.Context, args []string) {
 		return
 	}
 
-	// Show deprecation warning if legacy syntax is used
-	if parsed.IsLegacy && parsed.Warning != "" {
-		c.ui.PrintWarning(parsed.Warning)
-		fmt.Println()
-	}
 
 	// Send command
 	fmt.Printf("DEBUG: Sending command request: %+v\n", parsed.Request)

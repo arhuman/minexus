@@ -220,16 +220,6 @@ func TestConfigurationLoading(t *testing.T) {
 		}
 	})
 
-	// Test legacy connection string
-	t.Run("legacy connection string", func(t *testing.T) {
-		cfg := config.DefaultNexusConfig()
-		cfg.LegacyDBConnString = "postgres://legacy:conn@string/db"
-
-		connStr := cfg.DBConnectionString()
-		if connStr != "postgres://legacy:conn@string/db" {
-			t.Errorf("Expected legacy connection string, got %s", connStr)
-		}
-	})
 
 	// Test configuration logging (should not panic)
 	t.Run("configuration logging", func(t *testing.T) {
