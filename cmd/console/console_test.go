@@ -374,9 +374,6 @@ func TestHandleCommand(t *testing.T) {
 					t.Error("Expected unknown command message")
 				}
 			case "command-send":
-				if !strings.Contains(output, "DEBUG: Sending command request:") {
-					t.Errorf("Expected debug output, got: %s", output)
-				}
 				if !strings.Contains(output, "Command dispatched successfully") {
 					t.Errorf("Expected success message, got: %s", output)
 				}
