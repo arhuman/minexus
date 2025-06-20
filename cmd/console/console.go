@@ -208,7 +208,6 @@ func (c *Console) sendCommand(ctx context.Context, args []string) {
 
 
 	// Send command
-	fmt.Printf("DEBUG: Sending command request: %+v\n", parsed.Request)
 	response, err := c.grpc.SendCommand(ctx, parsed.Request)
 	if err != nil {
 		c.ui.PrintError(fmt.Sprintf("Error sending command: %v", err))
