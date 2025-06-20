@@ -156,7 +156,7 @@ jobs:
           NEXUS_SERVER=localhost
           NEXUS_MINION_PORT=11972
           NEXUS_CONSOLE_PORT=11973
-          DBHOST=localhost
+          DBHOST=nexus_db
           DBPORT=5432
           DBUSER=postgres
           DBPASS=postgres
@@ -187,7 +187,11 @@ jobs:
         run: |
           # Start required services
           docker compose up -d nexus_db
-          sleep 15
+          for i in {1..30}; do
+             docker exec nexus_db pg_isready -U postgres && break
+             echo "Waiting for database to be ready..."
+             sleep 2
+          done
           docker compose up -d nexus
           sleep 15
 
