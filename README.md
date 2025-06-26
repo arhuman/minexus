@@ -11,7 +11,7 @@ This software lacks some security features needed for production
 [![Build](https://github.com/arhuman/minexus/actions/workflows/CI.yml/badge.svg)](https://github.com/arhuman/minexus/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Minexus is a Remote Administration Tool (RAT)
+Minexus is a Remote Administration Tool (RAT) first used as a faster alternative to ansible.
 It's made of a central Nexus server, (multiple) Minion clients(s), and a Console client for administration..
 You can use it:
 * for remote deployment/execution tool (like ansible)
@@ -43,8 +43,6 @@ Where \<cmd\> can be:
 * A built-in system command (os, status)
 * ...
 
-
-
 It's current features include:
 
 - **gRPC Communication**: High-performance, cross-platform RPC
@@ -59,6 +57,16 @@ It's current features include:
 
 We focus on modularity and extensibility to make it easy to add new commands.
 (more info in [ADDING_COMMANDS.md](documentation/ADDING_COMMANDS.md))
+
+## Why Minexus
+
+Although I was very satisfied with ansible for deployment, I found it not practical for remote admistration and monitoring:
+- Ansible is to slow
+- Ansible multiple outpout handling is not convenient
+- Poor monitoring (No state management) requiring the use of other tools (telegraf/grafana...)
+
+Plus I was planning to make a security agent for other needs.
+So I decided to make this agent (minion) the server (nexus) and start by implementing the basic architecture for remote administration and then add incrementally new features, so that minexus could cover both my administration, monitoring and security needs.
 
 ## Quick Start
 
