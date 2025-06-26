@@ -21,15 +21,6 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
 
       - name: Install buf
         uses: bufbuild/buf-setup-action@v1.46.0
@@ -145,10 +136,7 @@ jobs:
           cd ../../..
 
       - name: Build all binaries
-        run: |
-          go build -v ./cmd/nexus
-          go build -v ./cmd/minion
-          go build -v ./cmd/console
+        run: make build
 
       - name: Create test environment file
         run: |
@@ -193,7 +181,14 @@ jobs:
              sleep 2
           done
           docker compose up -d nexus
-          sleep 15
+          for i in {1..30}; do
+             if curl -f http://localhost:11972/health >/dev/null 2>&1; then
+               echo "Nexus server is ready"
+               break
+             fi
+             echo "Waiting for nexus server to be ready..."
+             sleep 2
+          done
 
           # Run integration tests
           SLOW_TESTS=1 make test
