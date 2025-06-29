@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"os/signal"
@@ -55,13 +56,21 @@ func setupGRPCConnection(cfg *config.MinionConfig, logger *zap.Logger) (*grpc.Cl
 		return nil, fmt.Errorf("failed to load embedded TLS certificates: %w", err)
 	}
 
+	// Create certificate pool with the CA certificate
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM(certs.CAPem) {
+		logger.Error("Failed to load CA certificate")
+		return nil, fmt.Errorf("failed to load CA certificate")
+	}
+
 	tlsConfig := &tls.Config{
 		Certificates:       []tls.Certificate{cert},
+		RootCAs:            caCertPool,
 		InsecureSkipVerify: false,
 	}
 
 	creds := credentials.NewTLS(tlsConfig)
-	logger.Info("Embedded TLS credentials configured for minion client")
+	logger.Info("Embedded TLS credentials configured for minion client with CA validation")
 
 	// Create connection using modern gRPC pattern with timeout, keepalive and connection parameters
 	conn, err := grpc.NewClient(cfg.ServerAddr,
