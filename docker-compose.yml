@@ -23,7 +23,7 @@ services:
       - default
 
   # Nexus server - depends on database being healthy
-  nexus:
+  nexus_server:
     build:
       context: .
       dockerfile: Dockerfile.nexus
@@ -59,21 +59,21 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.minion
-    container_name: minion_1
+    container_name: minion
     restart: always
     env_file:
       - .env
     environment:
       - DEBUG=${DEBUG:-false}
-      - MINION_ID=${MINION_ID:-minion-docker-01}
-      - NEXUS_SERVER=nexus
+      - MINION_ID=${MINION_ID:-docker-minion}
+      - NEXUS_SERVER=nexus_server
       - NEXUS_MINION_PORT=${NEXUS_MINION_PORT:-11972}
       - HEARTBEAT_INTERVAL=${HEARTBEAT_INTERVAL:-60}
       - INITIAL_RECONNECT_DELAY=${INITIAL_RECONNECT_DELAY:-1}
       - MAX_RECONNECT_DELAY=${MAX_RECONNECT_DELAY:-3600}
       - CONNECT_TIMEOUT=${CONNECT_TIMEOUT:-3}
     depends_on:
-      nexus:
+      nexus_server:
         condition: service_healthy
     networks:
       - default
@@ -88,11 +88,11 @@ services:
       - .env
     environment:
       - DEBUG=${DEBUG:-false}
-      - NEXUS_SERVER=nexus
+      - NEXUS_SERVER=nexus_server
       - NEXUS_CONSOLE_PORT=${NEXUS_CONSOLE_PORT:-11973}
       - CONNECT_TIMEOUT=${CONNECT_TIMEOUT:-3}
     depends_on:
-      nexus:
+      nexus_server:
         condition: service_healthy
     networks:
       - default

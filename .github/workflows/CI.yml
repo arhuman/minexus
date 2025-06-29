@@ -59,91 +59,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-certs-v1-
 
-      - name: Generate certificates for mTLS
-        if: steps.cache-certs.outputs.cache-hit != 'true'
-        run: |
-          # Step 1: Generate Certificate Authority
-          # Create certificate files directory
-          mkdir -p internal/certs/files
-          cd internal/certs/files
-
-          # Generate CA private key (4096-bit RSA)
-          openssl genrsa -out ca.key 4096
-
-          # Generate self-signed CA certificate (10-year validity)
-          openssl req -new -x509 -key ca.key -sha256 -subj "/CN=Minexus CA/O=Minexus" -days 3650 -out ca.crt
-
-          # Step 2: Generate Server Certificate
-          # Create server certificate configuration
-          cat > server.conf << EOF
-          [req]
-          distinguished_name = req_distinguished_name
-          req_extensions = v3_req
-          prompt = no
-
-          [req_distinguished_name]
-          CN = nexus
-          O = Minexus
-
-          [v3_req]
-          keyUsage = keyEncipherment, dataEncipherment, digitalSignature
-          extendedKeyUsage = serverAuth
-          subjectAltName = @alt_names
-
-          [alt_names]
-          DNS.1 = nexus
-          DNS.2 = localhost
-          IP.1 = 127.0.0.1
-          IP.2 = ::1
-          EOF
-
-          # Generate server private key
-          openssl genrsa -out server.key 4096
-
-          # Generate certificate signing request
-          openssl req -new -key server.key -out server.csr -config server.conf
-
-          # Sign with CA (10-year validity)
-          openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
-            -out server.crt -days 3650 -sha256 -extensions v3_req -extfile server.conf
-
-          # Step 3: Generate Console Client Certificate
-          # Create console certificate configuration
-          cat > console.conf << EOF
-          [req]
-          distinguished_name = req_distinguished_name
-          req_extensions = v3_req
-          prompt = no
-
-          [req_distinguished_name]
-          CN = console
-          O = Minexus
-
-          [v3_req]
-          keyUsage = keyEncipherment, dataEncipherment, digitalSignature
-          extendedKeyUsage = clientAuth
-          EOF
-
-          # Generate console private key
-          openssl genrsa -out console.key 4096
-
-          # Generate certificate signing request
-          openssl req -new -key console.key -out console.csr -config console.conf
-
-          # Sign with CA (10-year validity)
-          openssl x509 -req -in console.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
-            -out console.crt -days 3650 -sha256 -extensions v3_req -extfile console.conf
-
-          # Certificate Verification
-          # Verify server certificate against CA
-          openssl verify -CAfile ca.crt server.crt
-
-          # Verify console certificate against CA
-          openssl verify -CAfile ca.crt console.crt
-
-          # Return to root directory
-          cd ../../..
-
       - name: Build all binaries
         run: make build
 
@@ -153,7 +68,7 @@ jobs:
       - name: Create test environment file
         run: |
           cat > .env << EOF
-          NEXUS_SERVER=localhost
+          NEXUS_SERVER=nexus_server
           NEXUS_MINION_PORT=11972
           NEXUS_CONSOLE_PORT=11973
           DBHOST=localhost
@@ -181,9 +96,9 @@ jobs:
           # Wait for the database to be ready, timing out after 60 seconds (120 attempts * 0.5 second sleep)
           timeout 60 bash -c 'until docker exec nexus_db pg_isready -U postgres; do sleep 0.5; done'
 
-          docker compose up -d nexus
+          docker compose up -d nexus_server
           # Wait for the Nexus server to be ready, timing out after 60 seconds
-          timeout 60 bash -c 'until curl -f http://localhost:11972/health > /dev/null 2>&1; do sleep 0.5; done'
+          timeout 60 bash -c 'until curl -f http://nexus_server:11972/health > /dev/null 2>&1; do sleep 0.5; done'
 
       - name: Show running containers
         run: docker ps
