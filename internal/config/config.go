@@ -321,17 +321,17 @@ type ConsoleConfig struct {
 
 // NexusConfig holds configuration for the Nexus server
 type NexusConfig struct {
-	MinionPort         int // Port for minion connections with standard TLS
-	ConsolePort        int // Port for console connections with mTLS
-	DBHost             string
-	DBPort             int
-	DBUser             string
-	DBPassword         string
-	DBName             string
-	DBSSLMode          string
-	Debug              bool
-	MaxMsgSize         int
-	FileRoot           string
+	MinionPort  int // Port for minion connections with standard TLS
+	ConsolePort int // Port for console connections with mTLS
+	DBHost      string
+	DBPort      int
+	DBUser      string
+	DBPassword  string
+	DBName      string
+	DBSSLMode   string
+	Debug       bool
+	MaxMsgSize  int
+	FileRoot    string
 }
 
 // MinionConfig holds configuration for Minion clients
@@ -478,7 +478,11 @@ func LoadConsoleConfig() (*ConsoleConfig, error) {
 
 // LoadNexusConfig loads Nexus configuration with validation
 func LoadNexusConfig() (*NexusConfig, error) {
-	loader := NewConfigLoader()
+	// Create a simple logger for configuration loading diagnostics
+	logger, _ := zap.NewDevelopment()
+	defer logger.Sync()
+
+	loader := NewConfigLoader().WithLogger(logger)
 	if err := loader.LoadEnvFile(".env"); err != nil {
 		return nil, fmt.Errorf("failed to load environment file: %w", err)
 	}
@@ -547,7 +551,6 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	maxMsgSize := flag.Int("max-msg-size", config.MaxMsgSize, "Maximum message size in bytes")
 	fileRoot := flag.String("file-root", config.FileRoot, "File root directory")
 
-
 	flag.Parse()
 
 	// Apply and validate command line flags
@@ -590,7 +593,6 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	}
 
 	config.FileRoot = *fileRoot
-
 
 	// Return validation errors if any
 	if len(validationErrors) > 0 {
@@ -665,7 +667,6 @@ func LoadMinionConfig() (*MinionConfig, error) {
 		config.HeartbeatInterval = heartbeat
 	}
 
-
 	// Parse command line flags (highest priority)
 	serverAddr := flag.String("server", config.ServerAddr, "Nexus server address")
 	id := flag.String("id", config.ID, "Minion ID (optional, will be generated if not provided)")
@@ -674,7 +675,6 @@ func LoadMinionConfig() (*MinionConfig, error) {
 	initialReconnectDelay := flag.Int("initial-reconnect-delay", config.InitialReconnectDelay, "Initial reconnection delay in seconds (exponential backoff starting point)")
 	maxReconnectDelay := flag.Int("max-reconnect-delay", config.MaxReconnectDelay, "Maximum reconnection delay in seconds (exponential backoff cap)")
 	heartbeatInterval := flag.Int("heartbeat-interval", config.HeartbeatInterval, "Heartbeat interval in seconds")
-
 
 	flag.Parse()
 

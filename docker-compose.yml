@@ -13,12 +13,12 @@ services:
       - 5432:5432
     volumes:
       - ./config/docker/initdb:/docker-entrypoint-initdb.d
-      - ${FILEROOT}/minexus/db:/var/lib/postgresql/data
+      - nexus_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready"]
+      test: ["CMD-SHELL", "pg_isready -U ${DBUSER} -d ${DBNAME}"]
       interval: 2s
-      timeout: 1s
-      retries: 6
+      timeout: 5s
+      retries: 10
     networks:
       - default
 
@@ -49,10 +49,10 @@ services:
     networks:
       - default
     healthcheck:
-     test: ["CMD-SHELL", "nc -z nexus ${NEXUS_MINION_PORT:-11972} || exit 1"]
-     interval: 2s  # More frequent checks
-     timeout: 1s   # Faster timeout
-     retries: 3    # Fewer retries
+      test: ["CMD-SHELL", "nc -z localhost ${NEXUS_MINION_PORT:-11972} && nc -z localhost ${NEXUS_CONSOLE_PORT:-11973} || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
 
   # Minion client - depends on nexus server being healthy
   minion:
@@ -101,6 +101,5 @@ services:
     profiles:
       - console
 
-networks:
-  default:
-    driver: bridge
+volumes:
+  nexus_db_data:

@@ -4,6 +4,7 @@
 pg_data/
 # The binaries
 /console
+/console-test
 /console-linux
 /console-darwin
 /console-windows.exe
@@ -21,8 +22,9 @@ coverage.out
 # TLS related
 # These files contain certificates, private keys, and related configuration
 # files that should never be committed to version control for security reasons
-*.crt
-*.key
+/internal/certs/files/*.crt
+/internal/certs/files/*.key
+/internal/certs/files/prod
 *.csr
 *.srl
 *.pem

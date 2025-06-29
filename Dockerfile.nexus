@@ -11,6 +11,8 @@ RUN go mod download
 # Add source code
 COPY cmd/ cmd/
 COPY internal/ internal/
+# Copy test certificates
+COPY internal/certs/files/test internal/certs/files
 COPY protogen/ protogen/
 
 # Build the nexus binary

@@ -23,7 +23,7 @@ import (
 // Test configuration
 const (
 	dockerComposeFile = "docker-compose.yml"
-	consoleExecutable = "./console"
+	consoleExecutable = "./console-test"
 	dbConnString      = "postgres://postgres:postgres@localhost:5432/minexus?sslmode=disable"
 	maxRetries        = 30
 	retryInterval     = 1 * time.Second
@@ -156,7 +156,7 @@ func setupDockerServices(t *testing.T) {
 		t.Logf("Services not running: %v. Starting them...", missingServices)
 
 		// Start services
-		cmd = exec.Command("docker", "compose", "up", "-d", "nexus", "minion")
+		cmd = exec.Command("docker", "compose", "--build", "up", "-d", "nexus", "minion")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
@@ -261,10 +261,20 @@ func waitForServices(t *testing.T) {
 func buildConsole(t *testing.T) {
 	if _, err := os.Stat(consoleExecutable); os.IsNotExist(err) {
 		t.Log("Building console executable...")
-		cmd := exec.Command("go", "build", "-o", "console", "./cmd/console")
+		cmd := exec.Command("mv", "internal/certs/files", "internal/certs/files.backup")
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("Failed to backup certs: %v", err)
+		}
+		cmd = exec.Command("cp", "-r", "internal/certs/files.backup/test", "internal/certs/files")
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("Failed to copy test certs: %v", err)
+		}
+		cmd = exec.Command("go", "build", "-o", "console-test", "./cmd/console")
 		if err := cmd.Run(); err != nil {
 			t.Fatalf("Failed to build console: %v", err)
 		}
+		//cmd := exec.Command("rm", "-rf", "internal/certs/files")
+		//cmd := exec.Command("mv", "internal/certs/files.backup", "internal/certs/files")
 	}
 }
 
@@ -274,6 +284,12 @@ func runConsoleCommandWithTimeout(command string, timeout time.Duration) (string
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "sh", "-c", fmt.Sprintf("echo '%s' | %s", command, consoleExecutable))
+
+	// Override NEXUS_SERVER to localhost for local console execution
+	// The .env file has NEXUS_SERVER=nexus which works for Docker containers,
+	// but the locally built console needs to connect to localhost
+	cmd.Env = append(os.Environ(), "NEXUS_SERVER=localhost")
+
 	output, err := cmd.CombinedOutput()
 	return string(output), err
 }
@@ -324,7 +340,7 @@ func testConsoleCommands(t *testing.T) {
 			name:       "Minion list",
 			command:    "minion-list",
 			shouldWork: true,
-			contains:   []string{"Connected minions", "minion-docker-01"},
+			contains:   []string{"Connected minions", "test-minion"},
 		},
 		{
 			name:       "Minion list alias",

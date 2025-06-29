@@ -21,6 +21,15 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
 
       - name: Install buf
         uses: bufbuild/buf-setup-action@v1.46.0
@@ -138,13 +147,16 @@ jobs:
       - name: Build all binaries
         run: make build
 
+      - name: Run unit tests
+        run: make test
+
       - name: Create test environment file
         run: |
           cat > .env << EOF
           NEXUS_SERVER=localhost
           NEXUS_MINION_PORT=11972
           NEXUS_CONSOLE_PORT=11973
-          DBHOST=nexus_db
+          DBHOST=localhost
           DBPORT=5432
           DBUSER=postgres
           DBPASS=postgres
@@ -161,43 +173,25 @@ jobs:
           EOF
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Cache Docker images
-        uses: actions/cache@v4
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
+        uses: docker/setup-buildx-action@v2
 
       - name: Run integration tests with Docker services
         run: |
-          # Start required services
           docker compose up -d nexus_db
-          for i in {1..30}; do
-             docker exec nexus_db pg_isready -U postgres && break
-             echo "Waiting for database to be ready..."
-             sleep 2
-          done
+          # Wait for the database to be ready, timing out after 60 seconds (120 attempts * 0.5 second sleep)
+          timeout 60 bash -c 'until docker exec nexus_db pg_isready -U postgres; do sleep 0.5; done'
+
           docker compose up -d nexus
-          for i in {1..30}; do
-             if curl -f http://localhost:11972/health >/dev/null 2>&1; then
-               echo "Nexus server is ready"
-               break
-             fi
-             echo "Waiting for nexus server to be ready..."
-             sleep 2
-          done
+          # Wait for the Nexus server to be ready, timing out after 60 seconds
+          timeout 60 bash -c 'until curl -f http://localhost:11972/health > /dev/null 2>&1; do sleep 0.5; done'
 
-          # Run integration tests
-          SLOW_TESTS=1 make test
+      - name: Show running containers
+        run: docker ps
 
-          # Cleanup
-          docker compose down
+      - name: Run integration tests
+        run: SLOW_TESTS=1 make test-integration
 
       - name: Upload coverage reports
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-reports
