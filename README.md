@@ -185,13 +185,13 @@ More documentation is available in the [`documentation/`](documentation/) direct
 - [Console Help System](documentation/commands.md#console-help-system) - Interactive command help
 - [File Operations](documentation/commands.md#file-commands) - File manipulation commands
 - [System Commands](documentation/commands.md#system-commands) - System information and shell commands
-- [Testing Guide](documentation/TESTING.md#overview) - Unit tests, integration tests, and best practices
-- [Development Workflow](documentation/TESTING.md#development-workflow) - Fast unit tests vs comprehensive testing
-- [CI/CD Integration](documentation/TESTING.md#cicd-integration) - Automated testing setup
-- [Configuration Options](documentation/CONFIGURATION.md#configuration-options) - All available settings
-- [Version Information](documentation/VERSION.md#querying-version-information) - How to check versions
-- [Build with Custom Versions](documentation/VERSION.md#setting-and-changing-versions) - Custom version builds
-- [Troubleshooting](documentation/CONFIGURATION.md#troubleshooting) - Common issues and solutions
+- [Testing Guide](documentation/testing.md#overview) - Unit tests, integration tests, and best practices
+- [Development Workflow](documentation/testing.md#development-workflow) - Fast unit tests vs comprehensive testing
+- [CI/CD Integration](documentation/testing.md#cicd-integration) - Automated testing setup
+- [Configuration Options](documentation/configuration.md#configuration-options) - All available settings
+- [Version Information](documentation/version.md#querying-version-information) - How to check versions
+- [Build with Custom Versions](documentation/version.md#setting-and-changing-versions) - Custom version builds
+- [Troubleshooting](documentation/configuration.md#troubleshooting) - Common issues and solutions
 
 ## Running
 

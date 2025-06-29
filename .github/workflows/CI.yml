@@ -50,15 +50,6 @@ jobs:
       - name: Verify dependencies
         run: go mod verify
 
-      - name: Cache certificates
-        id: cache-certs
-        uses: actions/cache@v4
-        with:
-          path: internal/certs/files
-          key: ${{ runner.os }}-certs-v1-${{ hashFiles('documentation/CERTIFICATE_GENERATION.md') }}
-          restore-keys: |
-            ${{ runner.os }}-certs-v1-
-
       - name: Build all binaries
         run: make build
 
