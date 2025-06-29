@@ -50,6 +50,10 @@ jobs:
       - name: Verify dependencies
         run: go mod verify
 
+      - name: Copy test certificates
+        run: |
+          cp -R internal/certs/files/test/* internal/certs/files
+
       - name: Build all binaries
         run: make build
 
