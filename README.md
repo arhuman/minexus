@@ -56,7 +56,7 @@ It's current features include:
 - **Database Persistence**: Command history and minion registry
 
 We focus on modularity and extensibility to make it easy to add new commands.
-(more info in [ADDING_COMMANDS.md](documentation/ADDING_COMMANDS.md))
+(more info in [adding_commands.md](documentation/adding_commands.md))
 
 ## Why Minexus
 
@@ -116,9 +116,9 @@ The configuration system follows this priority order (highest to lowest):
 3. **`.env` File**
 4. **Default Values** (lowest priority)
 
-For detailed configuration options, see [documentation/CONFIGURATION.md](documentation/CONFIGURATION.md).
+For detailed configuration options, see [documentation/configuration.md](documentation/configuration.md).
 
-For detailed version handling information, see [documentation/VERSION.md](documentation/VERSION.md).
+For detailed version handling information, see [documentation/version.md](documentation/version.md).
 
 ### TLS Configuration
 
@@ -134,7 +134,7 @@ For development builds, certificates are embedded from `internal/certs/`. Use Op
 
 ```bash
 # Certificate generation is handled by the certificate generation script
-# See documentation/CERTIFICATE_GENERATION.md for details
+# See documentation/certificate_generation.md for details
 
 # Rebuild binaries to embed the new certificates
 make build
@@ -173,20 +173,18 @@ make build
 
 More documentation is available in the [`documentation/`](documentation/) directory:
 
-- **[ADDING_COMMANDS.md](documentation/ADDING_COMMANDS.md)** - Developer oriented guide to add commands to Minexus
-- **[CONFIGURATION.md](documentation/CONFIGURATION.md)** - Complete configuration guide for all components
-- **[VERSION.md](documentation/VERSION.md)** - Version handling, building, and querying guide
-- **[COMMANDS.md](documentation/COMMANDS.md)** - Complete guide to all minion commands
-- **[TESTING.md](documentation/TESTING.md)** - Comprehensive testing guide and best practices
-- **[SIMPLIFICATION.md](documentation/SIMPLIFICATION.md)** - Architecture improvements and simplification details
-- **[IMPLEMENTATION_PLAN.md](documentation/IMPLEMENTATION_PLAN.md)** - Detailed implementation status and refactoring progress
+- **[adding_commands.md](documentation/adding_commands.md)** - Developer oriented guide to add commands to Minexus
+- **[configuration.md](documentation/configuration.md)** - Complete configuration guide for all components
+- **[version.md](documentation/version.md)** - Version handling, building, and querying guide
+- **[commands.md](documentation/commands.md)** - Complete guide to all console and minion commands
+- **[testing.md](documentation/testing.md)** - Comprehensive testing guide and best practices
 
 ### Quick Documentation Links
 
-- [Available Commands](documentation/COMMANDS.md#overview) - All commands that can be sent to minions
-- [Console Help System](documentation/COMMANDS.md#console-help-system) - Interactive command help
-- [File Operations](documentation/COMMANDS.md#file-commands) - File manipulation commands
-- [System Commands](documentation/COMMANDS.md#system-commands) - System information and shell commands
+- [Available Commands](documentation/commands.md#overview) - All commands that can be sent to minions
+- [Console Help System](documentation/commands.md#console-help-system) - Interactive command help
+- [File Operations](documentation/commands.md#file-commands) - File manipulation commands
+- [System Commands](documentation/commands.md#system-commands) - System information and shell commands
 - [Testing Guide](documentation/TESTING.md#overview) - Unit tests, integration tests, and best practices
 - [Development Workflow](documentation/TESTING.md#development-workflow) - Fast unit tests vs comprehensive testing
 - [CI/CD Integration](documentation/TESTING.md#cicd-integration) - Automated testing setup
