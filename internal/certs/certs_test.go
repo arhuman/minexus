@@ -23,7 +23,7 @@ func TestCertificateGeneration(t *testing.T) {
 			t.Fatalf("Failed to parse CA certificate: %v", err)
 		}
 
-		if cert.Subject.CommonName != "Minexus CA" {
+		if cert.Subject.CommonName != "Minexus-test CA" {
 			t.Errorf("Expected CA CN 'Minexus CA', got '%s'", cert.Subject.CommonName)
 		}
 
