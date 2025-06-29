@@ -94,11 +94,11 @@ setup_docker_services() {
     fi
     
     if ! check_service_status "nexus_server"; then
-        services_to_start+=("nexus")
+    	services_to_start+=("nexus_server")
     fi
     
-    if ! check_service_status "minion_1"; then
-        services_to_start+=("minion")
+    if ! check_service_status "minion"; then
+    	services_to_start+=("minion")
     fi
     
     if [ ${#services_to_start[@]} -gt 0 ]; then
@@ -112,9 +112,9 @@ setup_docker_services() {
         fi
         
         # Start nexus server if needed
-        if [[ " ${services_to_start[*]} " =~ " nexus " ]]; then
+        if [[ " ${services_to_start[*]} " =~ " nexus_server " ]]; then
             log_info "Starting Nexus server..."
-            docker compose up -d nexus
+            docker compose up -d nexus_server
             wait_for_service "Nexus Server" "localhost" "$NEXUS_MINION_PORT" 45
         fi
         

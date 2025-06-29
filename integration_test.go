@@ -143,7 +143,7 @@ func setupDockerServices(t *testing.T) {
 	// Parse output to check service status
 	services := parseDockerComposePS(string(output))
 
-	requiredServices := []string{"nexus_db", "nexus_server", "minion_1"}
+	requiredServices := []string{"nexus_db", "nexus_server", "minion"}
 	missingServices := []string{}
 
 	for _, service := range requiredServices {
@@ -156,7 +156,7 @@ func setupDockerServices(t *testing.T) {
 		t.Logf("Services not running: %v. Starting them...", missingServices)
 
 		// Start services
-		cmd = exec.Command("docker", "compose", "--build", "up", "-d", "nexus", "minion")
+		cmd = exec.Command("docker", "compose", "up", "-d", "nexus_server", "minion")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
@@ -192,9 +192,9 @@ func parseDockerComposePS(output string) map[string]string {
 				services["nexus_server"] = "running"
 			}
 		}
-		if strings.Contains(line, "minion_1") {
+		if strings.Contains(line, "minion") {
 			if strings.Contains(line, "running") {
-				services["minion_1"] = "running"
+				services["minion"] = "running"
 			}
 		}
 	}
@@ -340,7 +340,7 @@ func testConsoleCommands(t *testing.T) {
 			name:       "Minion list",
 			command:    "minion-list",
 			shouldWork: true,
-			contains:   []string{"Connected minions", "test-minion"},
+			contains:   []string{"Connected minions", "docker-minion"},
 		},
 		{
 			name:       "Minion list alias",
