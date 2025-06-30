@@ -41,6 +41,8 @@ Where \<cmd\> can be:
 * Any shell command ⚠️ This command is not filtered in any way, and may be deprecated in future release for security reason ⚠️
 * A built-in file command (get, copy, move, info)
 * A built-in system command (os, status)
+* A built-in docker-compose command (ps, up, down)
+* A built-in logging command (level, increase, decrease)
 * ...
 
 It's current features include:
@@ -280,6 +282,58 @@ docker compose --profile console up
 docker compose exec console /app/console
 ```
 
+## Usage Examples
+
+### Docker Compose Management
+
+Minexus provides built-in docker-compose commands for managing containerized applications across your infrastructure:
+
+```bash
+# Check status of services across all web servers
+command-send tag role=web "docker-compose:ps /opt/myapp"
+
+# Deploy application to staging environment
+command-send tag env=staging '{"command": "up", "path": "/opt/myapp", "build": true}'
+
+# Restart specific service on production servers
+command-send tag env=prod '{"command": "down", "path": "/opt/myapp", "service": "web"}'
+command-send tag env=prod '{"command": "up", "path": "/opt/myapp", "service": "web"}'
+
+# Stop application on all servers
+command-send all "docker-compose:down /opt/myapp"
+```
+
+### System Administration
+
+```bash
+# Check system resources across infrastructure
+command-send all "system:info"
+command-send tag role=database "df -h"
+
+# Update configuration files
+command-send minion web-01 'file:get /etc/nginx/nginx.conf'
+command-send minion web-01 '{"command": "copy", "source": "/tmp/nginx.conf", "destination": "/etc/nginx/nginx.conf"}'
+
+# Service management
+command-send tag env=prod "systemctl restart nginx"
+command-send all "systemctl status docker"
+```
+
+### Monitoring and Troubleshooting
+
+```bash
+# Check application logs
+command-send tag role=web "docker-compose:ps /opt/myapp"
+command-send minion web-01 "docker logs myapp_web_1"
+
+# Network diagnostics
+command-send all "netstat -tulpn | grep :80"
+command-send minion web-01 "ping -c 3 database-server"
+
+# Process monitoring
+command-send all "ps aux | grep nginx"
+command-send tag role=database "top -b -n 1 | head -20"
+```
 
 ## Development
 

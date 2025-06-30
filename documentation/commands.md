@@ -169,6 +169,79 @@ Control minion logging levels remotely:
 | `logging:increase` | Increase verbosity (debug←info←warn←error) | `command-send all logging:increase` |
 | `logging:decrease` | Decrease verbosity (debug→info→warn→error) | `command-send all logging:decrease` |
 
+### Docker Compose Commands
+
+Manage Docker Compose applications on minions:
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `docker-compose:ps` | List services and their status | `command-send minion web-01 "docker-compose:ps /opt/myapp"` |
+| `docker-compose:up` | Start services (detached mode) | `command-send minion web-01 "docker-compose:up /opt/myapp"` |
+| `docker-compose:down` | Stop and remove services | `command-send minion web-01 "docker-compose:down /opt/myapp"` |
+
+#### Docker Compose Command Features
+
+- **Flexible syntax**: Supports both simple string and JSON formats
+- **Service targeting**: Start/stop specific services or all services
+- **Build support**: Force rebuild images during startup
+- **Path validation**: Automatically locates docker-compose.yml/yaml files
+- **Error handling**: Comprehensive error reporting with command output
+
+#### Docker Compose Examples
+
+**Simple syntax (recommended for basic operations):**
+```bash
+# List all services in /opt/myapp
+command-send minion web-01 "docker-compose:ps /opt/myapp"
+
+# Start all services
+command-send minion web-01 "docker-compose:up /opt/myapp"
+
+# Stop all services
+command-send minion web-01 "docker-compose:down /opt/myapp"
+```
+
+**JSON syntax (for advanced operations):**
+```bash
+# Start specific service with rebuild
+command-send minion web-01 '{"command": "up", "path": "/opt/myapp", "service": "web", "build": true}'
+
+# Stop specific service only
+command-send minion web-01 '{"command": "down", "path": "/opt/myapp", "service": "database"}'
+
+# List services (JSON format)
+command-send minion web-01 '{"command": "ps", "path": "/opt/myapp"}'
+```
+
+**Deployment scenarios:**
+```bash
+# Deploy application with rebuild
+command-send tag env=staging '{"command": "up", "path": "/opt/myapp", "build": true}'
+
+# Rolling restart of web service
+command-send tag role=web '{"command": "down", "path": "/opt/myapp", "service": "web"}'
+command-send tag role=web '{"command": "up", "path": "/opt/myapp", "service": "web"}'
+
+# Check status across all servers
+command-send all "docker-compose:ps /opt/myapp"
+```
+
+#### Docker Compose Command Parameters
+
+| Parameter | Type | Required | Description | Default |
+|-----------|------|----------|-------------|---------|
+| `path` | string | Yes | Directory containing docker-compose.yml | - |
+| `service` | string | No | Specific service name to target | All services |
+| `build` | boolean | No | Force rebuild images (up command only) | false |
+
+#### Docker Compose Notes
+
+- Requires `docker-compose` to be installed on the target minion
+- Path must contain `docker-compose.yml` or `docker-compose.yaml`
+- The `up` command runs in detached mode (`-d`) by default
+- The `down` command removes containers and networks when stopping all services
+- Service-specific `down` operations use `stop` + `rm` instead of `down`
+
 ### Shell Commands
 
 Execute arbitrary shell commands on minions:

@@ -24,5 +24,11 @@ func SetupCommands() *Registry {
 	registry.Register(NewShellCommand())  // Unified shell command
 	registry.Register(NewSystemCommand()) // Backwards compatibility for system commands
 
+	// Register docker-compose commands
+	registry.Register(NewDockerComposePSCommand())
+	registry.Register(NewDockerComposeUpCommand())
+	registry.Register(NewDockerComposeDownCommand())
+	registry.Register(NewDockerComposeCommand()) // Unified docker-compose command for routing
+
 	return registry
 }
