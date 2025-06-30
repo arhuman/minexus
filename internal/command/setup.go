@@ -1,7 +1,9 @@
 package command
 
+import "time"
+
 // SetupCommands creates and registers all commands in the registry
-func SetupCommands() *Registry {
+func SetupCommands(shellTimeout time.Duration) *Registry {
 	registry := NewRegistry()
 
 	// Register system commands
@@ -21,8 +23,8 @@ func SetupCommands() *Registry {
 	registry.Register(NewFileCommand()) // Unified file command for routing
 
 	// Register shell commands (migrated to simplified system)
-	registry.Register(NewShellCommand())  // Unified shell command
-	registry.Register(NewSystemCommand()) // Backwards compatibility for system commands
+	registry.Register(NewShellCommand(shellTimeout))  // Unified shell command
+	registry.Register(NewSystemCommand(shellTimeout)) // Backwards compatibility for system commands
 
 	// Register docker-compose commands
 	registry.Register(NewDockerComposePSCommand())

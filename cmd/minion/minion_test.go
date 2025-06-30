@@ -257,7 +257,7 @@ func TestMinionCreationAndLifecycle(t *testing.T) {
 	// Test minion creation
 	heartbeatInterval := 30 * time.Second
 	reconnectDelay := 5 * time.Second
-	minionInstance := minion.NewMinion("test-id", client, heartbeatInterval, reconnectDelay, reconnectDelay, logger, atom)
+	minionInstance := minion.NewMinion("test-id", client, heartbeatInterval, reconnectDelay, reconnectDelay, 15*time.Second, 30*time.Second, logger, atom)
 
 	if minionInstance == nil {
 		t.Fatal("Minion should not be nil")
@@ -289,7 +289,7 @@ func TestMinionRegistrationSuccess(t *testing.T) {
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
 	// Use faster intervals
-	minion := minion.NewMinion("original-id", client, 100*time.Millisecond, 50*time.Millisecond, 5*time.Second, logger, atom)
+	minion := minion.NewMinion("original-id", client, 100*time.Millisecond, 50*time.Millisecond, 5*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
@@ -321,7 +321,7 @@ func TestMinionRegistrationFailure(t *testing.T) {
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
-	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, logger, atom)
+	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -349,7 +349,7 @@ func TestMinionRegistrationUnsuccessful(t *testing.T) {
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
-	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, logger, atom)
+	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -381,7 +381,7 @@ func TestMinionCommandExecution(t *testing.T) {
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
 	// Use shorter intervals for testing
-	minion := minion.NewMinion("test-id", client, 100*time.Millisecond, 50*time.Millisecond, 5*time.Second, logger, atom)
+	minion := minion.NewMinion("test-id", client, 100*time.Millisecond, 50*time.Millisecond, 5*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
@@ -426,7 +426,7 @@ func TestMinionStreamReconnection(t *testing.T) {
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
-	minion := minion.NewMinion("test-id", client, 30*time.Second, 100*time.Millisecond, 5*time.Second, logger, atom)
+	minion := minion.NewMinion("test-id", client, 30*time.Second, 100*time.Millisecond, 5*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -460,7 +460,7 @@ func TestMinionGetCommandsError(t *testing.T) {
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
-	minion := minion.NewMinion("test-id", client, 30*time.Second, 100*time.Millisecond, 5*time.Second, logger, atom)
+	minion := minion.NewMinion("test-id", client, 30*time.Second, 100*time.Millisecond, 5*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -496,7 +496,7 @@ func TestMinionSendResultError(t *testing.T) {
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
-	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, logger, atom)
+	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -521,7 +521,7 @@ func TestMinionPeriodicRegistration(t *testing.T) {
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
 	// Use very short heartbeat interval for testing
-	minion := minion.NewMinion("test-id", client, 50*time.Millisecond, 25*time.Millisecond, 5*time.Second, logger, atom)
+	minion := minion.NewMinion("test-id", client, 50*time.Millisecond, 25*time.Millisecond, 5*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -553,7 +553,7 @@ func TestMinionPeriodicRegistrationError(t *testing.T) {
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
-	minion := minion.NewMinion("test-id", client, 100*time.Millisecond, 5*time.Second, 60*time.Second, logger, atom)
+	minion := minion.NewMinion("test-id", client, 100*time.Millisecond, 5*time.Second, 60*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
@@ -585,7 +585,7 @@ func TestMinionContextCancellation(t *testing.T) {
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
-	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, logger, atom)
+	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -640,7 +640,7 @@ func TestMinionSystemInfoCommand(t *testing.T) {
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
 	// Use faster intervals
-	minion := minion.NewMinion("test-id", client, 100*time.Millisecond, 50*time.Millisecond, 5*time.Second, logger, atom)
+	minion := minion.NewMinion("test-id", client, 100*time.Millisecond, 50*time.Millisecond, 5*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 	defer cancel()
@@ -692,7 +692,7 @@ func TestMinionLoggingCommand(t *testing.T) {
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
-	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, logger, atom)
+	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -753,7 +753,7 @@ func TestMinionFileCommand(t *testing.T) {
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
-	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, logger, atom)
+	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -801,7 +801,7 @@ func TestMinionInvalidCommand(t *testing.T) {
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
-	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, logger, atom)
+	minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -947,7 +947,7 @@ func TestMainWorkflowSimulation(t *testing.T) {
 	heartbeatInterval := time.Duration(cfg.HeartbeatInterval) * time.Second
 	reconnectDelay := time.Duration(cfg.InitialReconnectDelay) * time.Second
 	maxReconnectDelay := time.Duration(cfg.MaxReconnectDelay) * time.Second
-	minionInstance := minion.NewMinion(cfg.ID, mockClient, heartbeatInterval, reconnectDelay, maxReconnectDelay, logger, atom)
+	minionInstance := minion.NewMinion(cfg.ID, mockClient, heartbeatInterval, reconnectDelay, maxReconnectDelay, 15*time.Second, 30*time.Second, logger, atom)
 
 	if minionInstance == nil {
 		t.Fatal("Failed to create minion")
@@ -1062,7 +1062,7 @@ func TestCommandExecutionTypes(t *testing.T) {
 			logger := zap.NewNop()
 			atom := zap.NewAtomicLevelAt(zap.InfoLevel)
 
-			minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, logger, atom)
+			minion := minion.NewMinion("test-id", client, 30*time.Second, 5*time.Second, 60*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()

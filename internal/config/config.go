@@ -343,6 +343,8 @@ type MinionConfig struct {
 	InitialReconnectDelay int // seconds - starting delay for exponential backoff
 	MaxReconnectDelay     int // seconds - maximum delay cap for exponential backoff
 	HeartbeatInterval     int // seconds
+	DefaultShellTimeout   int // seconds - default timeout for shell command execution
+	StreamTimeout         int // seconds - timeout for stream operations
 }
 
 // DefaultConsoleConfig returns default configuration for Console
@@ -378,9 +380,11 @@ func DefaultMinionConfig() *MinionConfig {
 		ID:                    "",                // Will be auto-generated if empty
 		Debug:                 false,
 		ConnectTimeout:        3,
-		InitialReconnectDelay: 1,    // 1 second initial delay
-		MaxReconnectDelay:     3600, // 1 hour maximum delay
+		InitialReconnectDelay: 1,   // 1 second initial delay
+		MaxReconnectDelay:     300, // 5 minutes maximum delay
 		HeartbeatInterval:     30,
+		DefaultShellTimeout:   15, // 15 seconds default shell timeout
+		StreamTimeout:         30, // 30 seconds stream timeout (reduced from 90s hardcoded)
 	}
 }
 
@@ -655,7 +659,7 @@ func LoadMinionConfig() (*MinionConfig, error) {
 		config.InitialReconnectDelay = initialDelay
 	}
 
-	if maxDelay, err := loader.GetIntInRange("MAX_RECONNECT_DELAY", config.MaxReconnectDelay, 1, 86400); err != nil {
+	if maxDelay, err := loader.GetIntInRange("MAX_RECONNECT_DELAY", config.MaxReconnectDelay, 1, 3600); err != nil {
 		validationErrors = append(validationErrors, err)
 	} else {
 		config.MaxReconnectDelay = maxDelay
@@ -667,6 +671,18 @@ func LoadMinionConfig() (*MinionConfig, error) {
 		config.HeartbeatInterval = heartbeat
 	}
 
+	if shellTimeout, err := loader.GetIntInRange("DEFAULT_SHELL_TIMEOUT", config.DefaultShellTimeout, 5, 300); err != nil {
+		validationErrors = append(validationErrors, err)
+	} else {
+		config.DefaultShellTimeout = shellTimeout
+	}
+
+	if streamTimeout, err := loader.GetIntInRange("STREAM_TIMEOUT", config.StreamTimeout, 10, 300); err != nil {
+		validationErrors = append(validationErrors, err)
+	} else {
+		config.StreamTimeout = streamTimeout
+	}
+
 	// Parse command line flags (highest priority)
 	serverAddr := flag.String("server", config.ServerAddr, "Nexus server address")
 	id := flag.String("id", config.ID, "Minion ID (optional, will be generated if not provided)")
@@ -675,6 +691,8 @@ func LoadMinionConfig() (*MinionConfig, error) {
 	initialReconnectDelay := flag.Int("initial-reconnect-delay", config.InitialReconnectDelay, "Initial reconnection delay in seconds (exponential backoff starting point)")
 	maxReconnectDelay := flag.Int("max-reconnect-delay", config.MaxReconnectDelay, "Maximum reconnection delay in seconds (exponential backoff cap)")
 	heartbeatInterval := flag.Int("heartbeat-interval", config.HeartbeatInterval, "Heartbeat interval in seconds")
+	defaultShellTimeout := flag.Int("default-shell-timeout", config.DefaultShellTimeout, "Default timeout for shell command execution in seconds")
+	streamTimeout := flag.Int("stream-timeout", config.StreamTimeout, "Timeout for stream operations in seconds")
 
 	flag.Parse()
 
@@ -709,11 +727,11 @@ func LoadMinionConfig() (*MinionConfig, error) {
 		config.InitialReconnectDelay = *initialReconnectDelay
 	}
 
-	if *maxReconnectDelay < 1 || *maxReconnectDelay > 86400 {
+	if *maxReconnectDelay < 1 || *maxReconnectDelay > 3600 {
 		validationErrors = append(validationErrors, ValidationError{
 			Field:   "max-reconnect-delay",
 			Value:   strconv.Itoa(*maxReconnectDelay),
-			Message: "must be between 1 and 86400 seconds",
+			Message: "must be between 1 and 3600 seconds",
 		})
 	} else {
 		config.MaxReconnectDelay = *maxReconnectDelay
@@ -727,6 +745,26 @@ func LoadMinionConfig() (*MinionConfig, error) {
 		})
 	} else {
 		config.HeartbeatInterval = *heartbeatInterval
+	}
+
+	if *defaultShellTimeout < 5 || *defaultShellTimeout > 300 {
+		validationErrors = append(validationErrors, ValidationError{
+			Field:   "default-shell-timeout",
+			Value:   strconv.Itoa(*defaultShellTimeout),
+			Message: "must be between 5 and 300 seconds",
+		})
+	} else {
+		config.DefaultShellTimeout = *defaultShellTimeout
+	}
+
+	if *streamTimeout < 10 || *streamTimeout > 300 {
+		validationErrors = append(validationErrors, ValidationError{
+			Field:   "stream-timeout",
+			Value:   strconv.Itoa(*streamTimeout),
+			Message: "must be between 10 and 300 seconds",
+		})
+	} else {
+		config.StreamTimeout = *streamTimeout
 	}
 
 	// Validate that initial delay is not greater than max delay
@@ -780,7 +818,9 @@ func (c *MinionConfig) LogConfig(logger *zap.Logger) {
 		zap.Int("connect_timeout", c.ConnectTimeout),
 		zap.Int("initial_reconnect_delay", c.InitialReconnectDelay),
 		zap.Int("max_reconnect_delay", c.MaxReconnectDelay),
-		zap.Int("heartbeat_interval", c.HeartbeatInterval))
+		zap.Int("heartbeat_interval", c.HeartbeatInterval),
+		zap.Int("default_shell_timeout", c.DefaultShellTimeout),
+		zap.Int("stream_timeout", c.StreamTimeout))
 }
 
 // LogConfig logs the console configuration

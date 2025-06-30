@@ -195,8 +195,8 @@ func createMinionServer(cfg *config.NexusConfig, serverCert tls.Certificate, log
 			PermitWithoutStream: true,
 		}),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
-			MaxConnectionIdle:     30 * time.Minute,
-			MaxConnectionAge:      60 * time.Minute,
+			MaxConnectionIdle:     10 * time.Minute, // Reduced from 30 to 10 minutes
+			MaxConnectionAge:      15 * time.Minute, // Reduced from 60 to 15 minutes
 			MaxConnectionAgeGrace: 10 * time.Second,
 			Time:                  60 * time.Second,
 			Timeout:               20 * time.Second,
@@ -225,8 +225,8 @@ func createConsoleServer(cfg *config.NexusConfig, serverCert tls.Certificate, ca
 			PermitWithoutStream: true,
 		}),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
-			MaxConnectionIdle:     30 * time.Minute,
-			MaxConnectionAge:      60 * time.Minute,
+			MaxConnectionIdle:     10 * time.Minute, // Reduced from 30 to 10 minutes
+			MaxConnectionAge:      15 * time.Minute, // Reduced from 60 to 15 minutes
 			MaxConnectionAgeGrace: 10 * time.Second,
 			Time:                  60 * time.Second,
 			Timeout:               20 * time.Second,

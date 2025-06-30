@@ -40,7 +40,7 @@ type ShellExecutor struct {
 // NewShellExecutor creates a new shell executor
 func NewShellExecutor(defaultTimeout time.Duration) *ShellExecutor {
 	if defaultTimeout <= 0 {
-		defaultTimeout = 30 * time.Second // Default 30 second timeout
+		defaultTimeout = 15 * time.Second // Default 15 second timeout
 	}
 	return &ShellExecutor{
 		defaultTimeout: defaultTimeout,
@@ -174,7 +174,7 @@ type ShellCommand struct {
 }
 
 // NewShellCommand creates a new unified shell command
-func NewShellCommand() *ShellCommand {
+func NewShellCommand(defaultTimeout time.Duration) *ShellCommand {
 	base := NewBaseCommand(
 		"shell",
 		"shell",
@@ -199,18 +199,18 @@ func NewShellCommand() *ShellCommand {
 	).WithParameters(
 		Param{Name: "command", Type: "string", Required: true, Description: "Shell command to execute"},
 		Param{Name: "shell", Type: "string", Required: false, Description: "Specific shell to use (bash, sh, zsh, cmd, powershell)", Default: "OS default"},
-		Param{Name: "timeout", Type: "int", Required: false, Description: "Timeout in seconds", Default: "30"},
+		Param{Name: "timeout", Type: "int", Required: false, Description: "Timeout in seconds", Default: "15"},
 	).WithNotes(
 		"Commands are executed in the shell specified or OS default",
 		"All output (stdout/stderr) is captured and returned",
 		"Exit codes and execution duration are tracked",
-		"Commands have a default 30-second timeout for safety",
+		"Commands have a default 15-second timeout for safety",
 		"Timed out commands are properly terminated",
 	)
 
 	return &ShellCommand{
 		BaseCommand: base,
-		executor:    NewShellExecutor(30 * time.Second),
+		executor:    NewShellExecutor(defaultTimeout),
 	}
 }
 
@@ -265,7 +265,7 @@ type SystemCommand struct {
 }
 
 // NewSystemCommand creates a system command (for backwards compatibility)
-func NewSystemCommand() *SystemCommand {
+func NewSystemCommand(defaultTimeout time.Duration) *SystemCommand {
 	base := NewBaseCommand(
 		"system",
 		"shell",
@@ -286,7 +286,7 @@ func NewSystemCommand() *SystemCommand {
 
 	return &SystemCommand{
 		BaseCommand: base,
-		executor:    NewShellExecutor(30 * time.Second),
+		executor:    NewShellExecutor(defaultTimeout),
 	}
 }
 

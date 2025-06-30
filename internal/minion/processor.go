@@ -3,6 +3,7 @@ package minion
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,10 +24,15 @@ type commandProcessor struct {
 	commandSeqNums  map[string]string // Tracks command_id -> seq_num
 	commandSeqMutex sync.RWMutex      // Protects the command sequence map
 	service         pb.MinionServiceClient
+	streamTimeout   time.Duration // Configurable timeout for stream operations
+	// HARDENING FIX: Add result buffering for stream disconnections
+	pendingResults  []*pb.CommandResult       // Buffer for results that couldn't be sent
+	pendingStatuses []*pb.CommandStatusUpdate // Buffer for status updates that couldn't be sent
+	pendingMutex    sync.RWMutex              // Protects pending buffers
 }
 
 // NewCommandProcessor creates a new command processor
-func NewCommandProcessor(id string, registry *command.Registry, atom *zap.AtomicLevel, service pb.MinionServiceClient, logger *zap.Logger) *commandProcessor {
+func NewCommandProcessor(id string, registry *command.Registry, atom *zap.AtomicLevel, service pb.MinionServiceClient, streamTimeout time.Duration, logger *zap.Logger) *commandProcessor {
 	logger, start := logging.FuncLogger(logger, "NewCommandProcessor")
 	defer logging.FuncExit(logger, start)
 
@@ -38,9 +44,16 @@ func NewCommandProcessor(id string, registry *command.Registry, atom *zap.Atomic
 		commandSeqNums:  make(map[string]string),
 		commandSeqMutex: sync.RWMutex{},
 		service:         service,
+		streamTimeout:   streamTimeout,
+		// HARDENING FIX: Initialize result buffering
+		pendingResults:  make([]*pb.CommandResult, 0),
+		pendingStatuses: make([]*pb.CommandStatusUpdate, 0),
+		pendingMutex:    sync.RWMutex{},
 	}
 
-	logger.Debug("Command processor created", zap.String("minion_id", id))
+	logger.Debug("Command processor created",
+		zap.String("minion_id", id),
+		zap.Duration("stream_timeout", streamTimeout))
 	return processor
 }
 
@@ -147,6 +160,13 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 
 	logger.Debug("Starting command listening loop")
 
+	// HARDENING FIX: Flush any pending results from previous stream disconnection
+	if err := cp.flushPendingResults(stream); err != nil {
+		logger.Warn("HARDENING: Failed to flush some pending results on stream reconnect",
+			zap.Error(err))
+		// Continue processing - don't fail on pending result flush errors
+	}
+
 	for {
 		loopStart := time.Now()
 		logger.Debug("Waiting for next command on stream")
@@ -189,8 +209,9 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 		case result := <-recvCh:
 			msg = result.msg
 			err = result.err
-		case <-time.After(90 * time.Second):
-			logger.Debug("stream.Recv() timeout after 90s, checking stream health")
+		case <-time.After(cp.streamTimeout):
+			logger.Debug("stream.Recv() timeout, checking stream health",
+				zap.Duration("timeout", cp.streamTimeout))
 			select {
 			case <-ctx.Done():
 				logger.Debug("Context cancelled during health check")
@@ -202,10 +223,13 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 		}
 
 		if err != nil {
+			// HARDENING FIX: Buffer any pending results before stream disconnection
+			cp.logPendingBufferState()
+
 			// Enhanced gRPC error logging for diagnosis
 			if grpcErr, ok := err.(interface{ GRPCStatus() *status.Status }); ok {
 				grpcStatus := grpcErr.GRPCStatus()
-				logger.Error("RACE CONDITION TRACKING: gRPC stream error receiving command",
+				logger.Error("HARDENING: gRPC stream error - results may be buffered",
 					zap.String("error_type", fmt.Sprintf("%T", err)),
 					zap.String("grpc_code", grpcStatus.Code().String()),
 					zap.String("grpc_message", grpcStatus.Message()),
@@ -213,7 +237,7 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 					zap.String("minion_id", cp.id),
 					zap.Error(err))
 			} else {
-				logger.Error("RACE CONDITION TRACKING: Non-gRPC error receiving command",
+				logger.Error("HARDENING: Non-gRPC stream error - results may be buffered",
 					zap.String("error_type", fmt.Sprintf("%T", err)),
 					zap.String("minion_id", cp.id),
 					zap.Error(err))
@@ -223,7 +247,7 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 				logger.Debug("Context cancelled, stopping command loop")
 				return ctx.Err()
 			}
-			logger.Warn("RACE CONDITION TRACKING: Stream error will cause reconnection attempt",
+			logger.Warn("HARDENING: Stream error will cause reconnection attempt",
 				zap.String("minion_id", cp.id),
 				zap.Error(err))
 			return err
@@ -261,14 +285,14 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 			zap.String("seq_num", seqNum))
 
 		// Send status updates through stream
-		if err := cp.sendStatusUpdate(stream, command.Id, "RECEIVED"); err != nil {
-			logger.Error("Failed to send RECEIVED status", zap.Error(err))
-			return err
+		if err := cp.sendStatusUpdateWithBuffer(stream, command.Id, "RECEIVED"); err != nil {
+			logger.Warn("HARDENING: Failed to send RECEIVED status - buffered for retry, continuing processing", zap.Error(err))
+			// Don't return error - continue processing while status is buffered
 		}
 
-		if err := cp.sendStatusUpdate(stream, command.Id, "EXECUTING"); err != nil {
-			logger.Error("Failed to send EXECUTING status", zap.Error(err))
-			return err
+		if err := cp.sendStatusUpdateWithBuffer(stream, command.Id, "EXECUTING"); err != nil {
+			logger.Warn("HARDENING: Failed to send EXECUTING status - buffered for retry, continuing processing", zap.Error(err))
+			// Don't return error - continue processing while status is buffered
 		}
 
 		// Execute command
@@ -281,10 +305,10 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 			result.Stderr = err.Error()
 		}
 
-		// Send command result through stream
-		if err := cp.sendCommandResult(stream, result); err != nil {
-			logger.Error("Failed to send command result", zap.Error(err))
-			return err
+		// Send command result through stream with buffering
+		if err := cp.sendCommandResultWithBuffer(stream, result); err != nil {
+			logger.Warn("HARDENING: Failed to send command result - buffered for retry, continuing processing", zap.Error(err))
+			// Don't return error - continue processing while result is buffered
 		}
 
 		// Send final status
@@ -292,9 +316,9 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 		if result.ExitCode != 0 {
 			status = "FAILED"
 		}
-		if err := cp.sendStatusUpdate(stream, command.Id, status); err != nil {
-			logger.Error("Failed to send final status", zap.Error(err))
-			return err
+		if err := cp.sendStatusUpdateWithBuffer(stream, command.Id, status); err != nil {
+			logger.Warn("HARDENING: Failed to send final status - buffered for retry, continuing processing", zap.Error(err))
+			// Don't return error - continue processing while status is buffered
 		}
 
 		logger.Debug("Command processing completed",
@@ -330,6 +354,133 @@ func (cp *commandProcessor) sendCommandResult(stream pb.MinionService_StreamComm
 	}
 
 	return stream.Send(msg)
+}
+
+// HARDENING FIX: Enhanced methods with result buffering capability
+
+// flushPendingResults attempts to send all buffered results and statuses
+func (cp *commandProcessor) flushPendingResults(stream pb.MinionService_StreamCommandsClient) error {
+	cp.pendingMutex.Lock()
+	defer cp.pendingMutex.Unlock()
+
+	var flushErrors []string
+
+	// Flush pending results
+	for i, result := range cp.pendingResults {
+		if err := cp.sendCommandResult(stream, result); err != nil {
+			flushErrors = append(flushErrors, fmt.Sprintf("result %d: %v", i, err))
+			continue
+		}
+		cp.logger.Info("HARDENING: Flushed pending result",
+			zap.String("command_id", result.CommandId),
+			zap.String("minion_id", result.MinionId))
+	}
+
+	// Flush pending status updates
+	for i, status := range cp.pendingStatuses {
+		if err := cp.sendStatusUpdate(stream, status.CommandId, status.Status); err != nil {
+			flushErrors = append(flushErrors, fmt.Sprintf("status %d: %v", i, err))
+			continue
+		}
+		cp.logger.Debug("HARDENING: Flushed pending status",
+			zap.String("command_id", status.CommandId),
+			zap.String("status", status.Status))
+	}
+
+	// Clear successfully flushed items
+	if len(flushErrors) == 0 {
+		cp.pendingResults = make([]*pb.CommandResult, 0)
+		cp.pendingStatuses = make([]*pb.CommandStatusUpdate, 0)
+		cp.logger.Info("HARDENING: All pending results and statuses flushed successfully")
+	} else {
+		cp.logger.Warn("HARDENING: Some pending items failed to flush",
+			zap.Strings("errors", flushErrors))
+		return fmt.Errorf("failed to flush %d items: %s", len(flushErrors), strings.Join(flushErrors, "; "))
+	}
+
+	return nil
+}
+
+// logPendingBufferState logs the current state of pending buffers
+func (cp *commandProcessor) logPendingBufferState() {
+	cp.pendingMutex.RLock()
+	defer cp.pendingMutex.RUnlock()
+
+	cp.logger.Info("HARDENING: Current pending buffer state",
+		zap.Int("pending_results", len(cp.pendingResults)),
+		zap.Int("pending_statuses", len(cp.pendingStatuses)),
+		zap.String("minion_id", cp.id))
+
+	// Log details of pending items for debugging
+	for i, result := range cp.pendingResults {
+		cp.logger.Debug("HARDENING: Pending result details",
+			zap.Int("index", i),
+			zap.String("command_id", result.CommandId),
+			zap.Int32("exit_code", result.ExitCode),
+			zap.Int64("timestamp", result.Timestamp))
+	}
+
+	for i, status := range cp.pendingStatuses {
+		cp.logger.Debug("HARDENING: Pending status details",
+			zap.Int("index", i),
+			zap.String("command_id", status.CommandId),
+			zap.String("status", status.Status),
+			zap.Int64("timestamp", status.Timestamp))
+	}
+}
+
+// sendStatusUpdateWithBuffer sends a status update with buffering on failure
+func (cp *commandProcessor) sendStatusUpdateWithBuffer(stream pb.MinionService_StreamCommandsClient, commandID, status string) error {
+	update := &pb.CommandStatusUpdate{
+		CommandId: commandID,
+		MinionId:  cp.id,
+		Status:    status,
+		Timestamp: time.Now().Unix(),
+	}
+
+	// Try to send directly first
+	if err := cp.sendStatusUpdate(stream, commandID, status); err != nil {
+		// Buffer the status update for later retry
+		cp.pendingMutex.Lock()
+		cp.pendingStatuses = append(cp.pendingStatuses, update)
+		cp.pendingMutex.Unlock()
+
+		cp.logger.Warn("HARDENING: Status update failed, buffered for retry",
+			zap.String("command_id", commandID),
+			zap.String("status", status),
+			zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
+// sendCommandResultWithBuffer sends a command result with buffering on failure
+func (cp *commandProcessor) sendCommandResultWithBuffer(stream pb.MinionService_StreamCommandsClient, result *pb.CommandResult) error {
+	cp.logger.Info("DIAGNOSTIC: Attempting to send command result",
+		zap.String("command_id", result.CommandId),
+		zap.String("minion_id", result.MinionId),
+		zap.Int32("exit_code", result.ExitCode))
+
+	// Try to send directly first
+	if err := cp.sendCommandResult(stream, result); err != nil {
+		// Buffer the result for later retry
+		cp.pendingMutex.Lock()
+		cp.pendingResults = append(cp.pendingResults, result)
+		cp.pendingMutex.Unlock()
+
+		cp.logger.Error("HARDENING: Command result failed to send, buffered for retry",
+			zap.String("command_id", result.CommandId),
+			zap.String("minion_id", result.MinionId),
+			zap.Int32("exit_code", result.ExitCode),
+			zap.Error(err))
+		return err
+	}
+
+	cp.logger.Info("DIAGNOSTIC: Command result sent successfully",
+		zap.String("command_id", result.CommandId),
+		zap.String("minion_id", result.MinionId))
+	return nil
 }
 
 // UpdateMinionID updates the minion ID used for command results

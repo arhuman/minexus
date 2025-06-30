@@ -42,7 +42,7 @@ func createTestServer(db *sql.DB) *Server {
 		dbService:       dbService, // Will be a proper nil interface when db is nil
 		minionRegistry:  minionRegistry,
 		pendingCommands: make(map[string]*CommandTracker),
-		commandRegistry: command.SetupCommands(),
+		commandRegistry: command.SetupCommands(15 * time.Second),
 	}
 }
 
@@ -879,10 +879,27 @@ func TestStreamCommandsWithResults(t *testing.T) {
 		LastSeen:  time.Now(),
 	}
 
-	// Mock database operations for result storage
+	// Mock complete StoreCommandResult flow expectations:
+	// 1. Begin transaction
+	mock.ExpectBegin()
+
+	// 2. Check if command exists
+	mock.ExpectQuery("SELECT EXISTS\\(SELECT 1 FROM commands WHERE id = \\$1 AND host_id = \\$2\\)").
+		WithArgs("cmd-123", minionID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+	// 3. Insert result
 	mock.ExpectExec("INSERT INTO command_results \\(command_id, minion_id, exit_code, stdout, stderr, timestamp\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6\\)").
 		WithArgs("cmd-123", minionID, int32(0), "success output", "", sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	// 4. Update command status to COMPLETED
+	mock.ExpectExec("UPDATE commands SET status = \\$1 WHERE id = \\$2 AND host_id = \\$3").
+		WithArgs("COMPLETED", "cmd-123", minionID).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	// 5. Commit transaction
+	mock.ExpectCommit()
 
 	// Create test messages
 	result := &pb.CommandResult{
@@ -2060,7 +2077,7 @@ func TestStreamCommands(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db, _, err := sqlmock.New()
+			db, mock, err := sqlmock.New()
 			if err != nil {
 				t.Fatalf("Failed to create mock database: %v", err)
 			}
@@ -2068,6 +2085,36 @@ func TestStreamCommands(t *testing.T) {
 
 			server := createTestServer(db)
 			minionID := tt.setupServer(server)
+
+			// Set up complete mock expectations for status updates and result storage
+			if tt.name == "successful streaming with command and status" {
+				// Expect status update for EXECUTING
+				mock.ExpectExec("UPDATE commands SET status = \\$1 WHERE id = \\$2").
+					WithArgs("EXECUTING", "cmd-1").
+					WillReturnResult(sqlmock.NewResult(1, 1))
+
+				// Complete StoreCommandResult flow expectations:
+				// 1. Begin transaction
+				mock.ExpectBegin()
+
+				// 2. Check if command exists
+				mock.ExpectQuery("SELECT EXISTS\\(SELECT 1 FROM commands WHERE id = \\$1 AND host_id = \\$2\\)").
+					WithArgs("cmd-1", "test-minion").
+					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+				// 3. Insert result
+				mock.ExpectExec("INSERT INTO command_results \\(command_id, minion_id, exit_code, stdout, stderr, timestamp\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6\\)").
+					WithArgs("cmd-1", "test-minion", int32(0), "test output", "", sqlmock.AnyArg()).
+					WillReturnResult(sqlmock.NewResult(1, 1))
+
+				// 4. Update command status to COMPLETED
+				mock.ExpectExec("UPDATE commands SET status = \\$1 WHERE id = \\$2 AND host_id = \\$3").
+					WithArgs("COMPLETED", "cmd-1", "test-minion").
+					WillReturnResult(sqlmock.NewResult(1, 1))
+
+				// 5. Commit transaction
+				mock.ExpectCommit()
+			}
 
 			stream := &MockStreamServer{
 				ctx: tt.setupCtx(),
