@@ -198,6 +198,13 @@ cover-ci:
 		echo "0.0%"; \
 	fi
 
+## test-integration: run integration tests with Docker services
+.PHONY: test-integration
+test-integration:
+	@echo "Running integration tests with Docker services..."
+	@cp -R internal/certs/files/test/* internal/certs/files/
+	SLOW_TESTS=1 go test -v ./... -run TestIntegration
+
 ## grpc: generate gRPC code
 .PHONY: grpc
 grpc:
