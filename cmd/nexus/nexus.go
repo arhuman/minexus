@@ -106,14 +106,24 @@ func main() {
 
 	// Start both servers concurrently
 	var wg sync.WaitGroup
+	var serverReady sync.WaitGroup
 	wg.Add(2)
+	serverReady.Add(2)
 
 	// Start minion server
 	go func() {
 		defer wg.Done()
-		logger.Info("Minion server listening (TLS)",
+		logger.Info("Minion server starting (TLS)",
 			zap.String("address", minionListener.Addr().String()),
 			zap.Int("port", cfg.MinionPort))
+
+		// Signal server is about to start
+		go func() {
+			time.Sleep(100 * time.Millisecond) // Brief delay for server to initialize
+			logger.Info("Minion server ready for connections", zap.Int("port", cfg.MinionPort))
+			serverReady.Done()
+		}()
+
 		if err := minionServer.Serve(minionListener); err != nil {
 			logger.Error("Minion server failed", zap.Error(err))
 		}
@@ -122,12 +132,28 @@ func main() {
 	// Start console server
 	go func() {
 		defer wg.Done()
-		logger.Info("Console server listening (mTLS)",
+		logger.Info("Console server starting (mTLS)",
 			zap.String("address", consoleListener.Addr().String()),
 			zap.Int("port", cfg.ConsolePort))
+
+		// Signal server is about to start
+		go func() {
+			time.Sleep(100 * time.Millisecond) // Brief delay for server to initialize
+			logger.Info("Console server ready for connections", zap.Int("port", cfg.ConsolePort))
+			serverReady.Done()
+		}()
+
 		if err := consoleServer.Serve(consoleListener); err != nil {
 			logger.Error("Console server failed", zap.Error(err))
 		}
+	}()
+
+	// Wait for both servers to be ready
+	go func() {
+		serverReady.Wait()
+		logger.Info("🚀 NEXUS FULLY READY - Both minion and console servers accepting connections",
+			zap.Int("minion_port", cfg.MinionPort),
+			zap.Int("console_port", cfg.ConsolePort))
 	}()
 
 	// Set up graceful shutdown

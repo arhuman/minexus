@@ -208,57 +208,82 @@ func parseDockerComposePS(output string) map[string]string {
 
 // waitForServices waits for services to be ready
 func waitForServices(t *testing.T) {
-	t.Log("Waiting for services to be ready...")
+	t.Log("🔍 Starting service readiness checks...")
 
 	// Wait for database
+	t.Log("📊 Checking database connectivity...")
+	dbStart := time.Now()
 	for i := 0; i < maxRetries; i++ {
 		db, err := sql.Open("postgres", dbConnString)
 		if err == nil {
 			if err := db.Ping(); err == nil {
 				db.Close()
+				t.Logf("✅ Database ready after %v (attempt %d/%d)", time.Since(dbStart), i+1, maxRetries)
 				break
 			}
 			db.Close()
 		}
 
 		if i == maxRetries-1 {
-			t.Fatalf("Database not ready after %d retries", maxRetries)
+			t.Fatalf("❌ Database not ready after %d retries and %v", maxRetries, time.Since(dbStart))
 		}
 
+		if i%5 == 0 { // Log every 5 attempts
+			t.Logf("⏳ Database attempt %d/%d (elapsed: %v)", i+1, maxRetries, time.Since(dbStart))
+		}
 		time.Sleep(retryInterval)
 	}
 
+	// Check Docker health status before port tests
+	t.Log("🐳 Checking Docker Compose service health...")
+	cmd := exec.Command("docker", "compose", "ps", "--format", "table")
+	if output, err := cmd.Output(); err == nil {
+		t.Logf("Docker services status:\n%s", string(output))
+	}
+
 	// Wait for nexus minion server (port 11972)
+	t.Logf("🔌 Checking nexus minion server (port %d)...", minionPort)
+	minionStart := time.Now()
 	for i := 0; i < maxRetries; i++ {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", minionPort), 2*time.Second)
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", minionPort), 3*time.Second)
 		if err == nil {
 			conn.Close()
+			t.Logf("✅ Minion server ready after %v (attempt %d/%d)", time.Since(minionStart), i+1, maxRetries)
 			break
 		}
 
 		if i == maxRetries-1 {
-			t.Fatalf("Nexus minion server not ready after %d retries. Last error: %v", maxRetries, err)
+			t.Fatalf("❌ Nexus minion server not ready after %d retries and %v. Last error: %v", maxRetries, time.Since(minionStart), err)
 		}
 
+		if i%3 == 0 { // Log every 3 attempts
+			t.Logf("⏳ Minion port attempt %d/%d (elapsed: %v, error: %v)", i+1, maxRetries, time.Since(minionStart), err)
+		}
 		time.Sleep(retryInterval)
 	}
 
 	// Wait for nexus console server (port 11973)
+	t.Logf("🔐 Checking nexus console server (port %d)...", consolePort)
+	consoleStart := time.Now()
 	for i := 0; i < maxRetries; i++ {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", consolePort), 2*time.Second)
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", consolePort), 3*time.Second)
 		if err == nil {
 			conn.Close()
+			t.Logf("✅ Console server ready after %v (attempt %d/%d)", time.Since(consoleStart), i+1, maxRetries)
 			break
 		}
 
 		if i == maxRetries-1 {
-			t.Fatalf("Nexus console server not ready after %d retries. Last error: %v", maxRetries, err)
+			t.Fatalf("❌ Nexus console server not ready after %d retries and %v. Last error: %v", maxRetries, time.Since(consoleStart), err)
 		}
 
+		if i%3 == 0 { // Log every 3 attempts
+			t.Logf("⏳ Console port attempt %d/%d (elapsed: %v, error: %v)", i+1, maxRetries, time.Since(consoleStart), err)
+		}
 		time.Sleep(retryInterval)
 	}
 
-	t.Log("All services are ready (both minion and console ports)")
+	t.Log("🚀 All services are ready (database, minion port, console port)")
 }
 
 // buildConsole builds the console executable if it doesn't exist

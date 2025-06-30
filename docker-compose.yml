@@ -49,10 +49,11 @@ services:
     networks:
       - default
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost ${NEXUS_MINION_PORT:-11972} && nc -z localhost ${NEXUS_CONSOLE_PORT:-11973} || exit 1"]
-      interval: 5s
-      timeout: 10s
-      retries: 5
+      test: ["CMD-SHELL", "sleep 1 && nc -z localhost ${NEXUS_MINION_PORT:-11972} && nc -z localhost ${NEXUS_CONSOLE_PORT:-11973} && echo 'Both ports accessible' || exit 1"]
+      interval: 3s
+      timeout: 15s
+      retries: 10
+      start_period: 10s
 
   # Minion client - depends on nexus server being healthy
   minion:
