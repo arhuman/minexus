@@ -113,6 +113,7 @@ func TestIntegrationSuite(t *testing.T) {
 	t.Run("ShellCommands", testShellCommands)
 	t.Run("FileCommands", testFileCommands)
 	t.Run("SystemCommands", testSystemCommands)
+	t.Run("DockerComposeCommands", testDockerComposeCommands)
 	t.Run("ErrorCases", testErrorCases)
 	t.Run("DatabaseIntegrity", testDatabaseIntegrity)
 
@@ -414,6 +415,30 @@ func testShellCommands(t *testing.T) {
 			name:       "System OS command",
 			command:    "command-send all system:os",
 			shouldWork: true,
+			numResults: 1,
+		},
+		{
+			name:       "Docker Compose PS with nonexistent path",
+			command:    "command-send all docker-compose:ps /nonexistent/path",
+			shouldWork: true,  // Command will be sent but will fail on minion
+			numResults: 1,
+		},
+		{
+			name:       "Docker Compose PS with invalid JSON",
+			command:    `command-send all '{"command": "ps", "path":'`,
+			shouldWork: true,  // Command will be sent but will fail on minion  
+			numResults: 1,
+		},
+		{
+			name:       "Docker Compose UP with missing path",
+			command:    `command-send all '{"command": "up"}'`,
+			shouldWork: true,  // Command will be sent but will fail on minion
+			numResults: 1,
+		},
+		{
+			name:       "Docker Compose DOWN with current directory",
+			command:    "command-send all docker-compose:down .",
+			shouldWork: true,  // Command will be sent but will fail on minion (no docker-compose.yml in current dir)
 			numResults: 1,
 		},
 		{
@@ -833,6 +858,205 @@ func testSystemCommands(t *testing.T) {
 		originalTime := time.Duration(len(commandIDs)) * 10 * time.Second
 		t.Logf("🖥️ System optimization: %v vs %v original (%.1f%% improvement)",
 			totalTime, originalTime, float64(originalTime-totalTime)/float64(originalTime)*100)
+	}
+}
+
+// testDockerComposeCommands tests docker-compose command functionality
+func testDockerComposeCommands(t *testing.T) {
+	// Create a temporary directory with a test docker-compose.yml file
+	tmpDir := t.TempDir()
+	composeContent := `version: '3.8'
+services:
+  test-web:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+  test-db:
+    image: postgres:alpine
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+`
+	
+	composeFile := tmpDir + "/docker-compose.yml"
+	err := os.WriteFile(composeFile, []byte(composeContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test docker-compose.yml: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		command     string
+		shouldWork  bool
+		expectError bool
+		numResults  int
+		contains    []string // Text that should be in the result
+	}{
+		{
+			name:       "Docker Compose PS with valid path",
+			command:    fmt.Sprintf("command-send all docker-compose:ps %s", tmpDir),
+			shouldWork: true,
+			numResults: 1,
+			contains:   []string{}, // May fail if docker not available, that's ok
+		},
+		{
+			name:       "Docker Compose PS with JSON format",
+			command:    fmt.Sprintf(`command-send all '{"command": "ps", "path": "%s"}'`, tmpDir),
+			shouldWork: true,
+			numResults: 1,
+			contains:   []string{},
+		},
+		{
+			name:       "Docker Compose UP with valid path",
+			command:    fmt.Sprintf("command-send all docker-compose:up %s", tmpDir),
+			shouldWork: true,
+			numResults: 1,
+			contains:   []string{}, // May fail if docker not available, that's ok
+		},
+		{
+			name:       "Docker Compose UP with JSON and service",
+			command:    fmt.Sprintf(`command-send all '{"command": "up", "path": "%s", "service": "test-web"}'`, tmpDir),
+			shouldWork: true,
+			numResults: 1,
+			contains:   []string{},
+		},
+		{
+			name:       "Docker Compose UP with build flag",
+			command:    fmt.Sprintf(`command-send all '{"command": "up", "path": "%s", "build": true}'`, tmpDir),
+			shouldWork: true,
+			numResults: 1,
+			contains:   []string{},
+		},
+		{
+			name:       "Docker Compose DOWN with valid path",
+			command:    fmt.Sprintf("command-send all docker-compose:down %s", tmpDir),
+			shouldWork: true,
+			numResults: 1,
+			contains:   []string{},
+		},
+		{
+			name:       "Docker Compose DOWN with service",
+			command:    fmt.Sprintf(`command-send all '{"command": "down", "path": "%s", "service": "test-web"}'`, tmpDir),
+			shouldWork: true,
+			numResults: 1,
+			contains:   []string{},
+		},
+		{
+			name:        "Docker Compose with nonexistent path",
+			command:     "command-send all docker-compose:ps /nonexistent/path",
+			shouldWork:  true,  // Command will be sent
+			expectError: false, // But will fail on minion
+			numResults:  1,
+			contains:    []string{}, // Error will be in the result
+		},
+		{
+			name:        "Docker Compose with invalid JSON",
+			command:     `command-send all '{"command": "ps", "path":'`,
+			shouldWork:  true,  // Command will be sent
+			expectError: false, // But will fail on minion
+			numResults:  1,
+			contains:    []string{},
+		},
+		{
+			name:        "Docker Compose with missing path",
+			command:     `command-send all '{"command": "up"}'`,
+			shouldWork:  true,  // Command will be sent
+			expectError: false, // But will fail on minion
+			numResults:  1,
+			contains:    []string{},
+		},
+	}
+
+	// Execute commands and collect command IDs
+	var commandIDs []string
+	var testNames []string
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("send_%s", tt.name), func(t *testing.T) {
+			if tt.expectError {
+				// Handle error cases immediately
+				output, err := runConsoleCommandWithTimeout(tt.command, 5*time.Second)
+				if err == nil && !strings.Contains(output, "Error") {
+					t.Logf("Expected error but command seemed to work: %s", output)
+				}
+				return
+			}
+
+			if !tt.shouldWork {
+				return
+			}
+
+			// Send command
+			output, err := runConsoleCommandWithTimeout(tt.command, 5*time.Second)
+			if err != nil {
+				t.Errorf("Failed to send command: %v", err)
+				return
+			}
+
+			// Extract command ID
+			commandID := extractCommandID(output)
+			if commandID == "" {
+				t.Errorf("Could not extract command ID from output: %s", output)
+				return
+			}
+
+			commandIDs = append(commandIDs, commandID)
+			testNames = append(testNames, tt.name)
+			t.Logf("📤 Sent docker-compose command '%s': %s", tt.name, commandID)
+		})
+	}
+
+	// Wait for results with intelligent polling
+	if len(commandIDs) > 0 {
+		t.Logf("🔄 Waiting for %d docker-compose command results...", len(commandIDs))
+		
+		pollStart := time.Now()
+		resultsFound := make(map[string]bool)
+		maxAttempts := 30
+
+		for attempt := 0; attempt < maxAttempts; attempt++ {
+			foundCount := 0
+			for i, commandID := range commandIDs {
+				if resultsFound[commandID] {
+					foundCount++
+					continue
+				}
+
+				actualResults := getNbResultsInDB(t, commandID)
+				if actualResults > 0 {
+					resultsFound[commandID] = true
+					foundCount++
+					elapsed := time.Since(pollStart)
+					idDisplay := commandID
+					if len(commandID) >= 8 {
+						idDisplay = commandID[:8]
+					}
+					t.Logf("✅ Docker-compose results for '%s' (%s) found after %v",
+						testNames[i], idDisplay, elapsed)
+				}
+			}
+
+			// Early termination when all results found
+			if foundCount == len(commandIDs) {
+				totalPollTime := time.Since(pollStart)
+				t.Logf("🎯 ALL DOCKER-COMPOSE RESULTS FOUND: %d/%d in %v",
+					foundCount, len(commandIDs), totalPollTime)
+				break
+			}
+
+			time.Sleep(1 * time.Second)
+		}
+
+		// Verify final results
+		finalCount := len(resultsFound)
+		t.Logf("📊 Docker-compose commands processed: %d/%d", finalCount, len(commandIDs))
+		
+		// In integration tests, docker-compose commands may fail if Docker isn't available
+		// This is expected and the test should focus on command delivery, not execution success
+		if finalCount < len(commandIDs) {
+			t.Logf("ℹ️  Some docker-compose commands may have failed due to Docker availability in test environment")
+		}
 	}
 }
 

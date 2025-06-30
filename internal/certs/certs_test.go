@@ -24,7 +24,7 @@ func TestCertificateGeneration(t *testing.T) {
 		}
 
 		if cert.Subject.CommonName != "Minexus-test CA" {
-			t.Errorf("Expected CA CN 'Minexus CA', got '%s'", cert.Subject.CommonName)
+			t.Errorf("Expected CA CN 'Minexus-test CA', got '%s'", cert.Subject.CommonName)
 		}
 
 		if !cert.IsCA {

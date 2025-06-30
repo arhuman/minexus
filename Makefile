@@ -141,6 +141,8 @@ run: build
 
 ## test: run tests with coverage (set SLOW_TESTS=1 to include integration tests)
 test:
+	@echo "Copying test certificates..."
+	@cp -R internal/certs/files/test/* internal/certs/files/
 	go run honnef.co/go/tools/cmd/staticcheck@latest -checks=all,-ST1000,-U1000 ./...
 	./run_tests.sh
 
