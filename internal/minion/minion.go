@@ -3,6 +3,7 @@ package minion
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -127,11 +128,20 @@ func (m *Minion) run(ctx context.Context) {
 		}
 
 		// Process commands until error or disconnection
+		m.logger.Debug("Starting command processing loop",
+			zap.String("minion_id", m.id))
 		err = m.commandProcessor.(*commandProcessor).ProcessCommands(ctx, stream)
 
 		if err != nil && ctx.Err() == nil {
-			m.logger.Debug("Command processing ended, will reconnect", zap.Error(err))
+			m.logger.Error("Command processing ended with error, will reconnect",
+				zap.Error(err),
+				zap.String("error_type", fmt.Sprintf("%T", err)),
+				zap.String("minion_id", m.id))
 			m.connectionMgr.Disconnect()
+		} else if err != nil {
+			m.logger.Debug("Command processing ended due to context cancellation",
+				zap.Error(err),
+				zap.String("minion_id", m.id))
 		}
 	}
 }

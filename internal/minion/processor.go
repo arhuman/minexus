@@ -11,6 +11,7 @@ import (
 	pb "minexus/protogen"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc/status"
 )
 
 // commandProcessor implements the CommandExecutor interface
@@ -201,7 +202,21 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 		}
 
 		if err != nil {
-			logger.Error("Error receiving command", zap.String("error_type", fmt.Sprintf("%T", err)))
+			// Enhanced gRPC error logging for diagnosis
+			if grpcErr, ok := err.(interface{ GRPCStatus() *status.Status }); ok {
+				grpcStatus := grpcErr.GRPCStatus()
+				logger.Error("gRPC stream error receiving command",
+					zap.String("error_type", fmt.Sprintf("%T", err)),
+					zap.String("grpc_code", grpcStatus.Code().String()),
+					zap.String("grpc_message", grpcStatus.Message()),
+					zap.Any("grpc_details", grpcStatus.Details()),
+					zap.Error(err))
+			} else {
+				logger.Error("Non-gRPC error receiving command",
+					zap.String("error_type", fmt.Sprintf("%T", err)),
+					zap.Error(err))
+			}
+
 			if ctx.Err() != nil {
 				logger.Debug("Context cancelled, stopping command loop")
 				return ctx.Err()

@@ -40,14 +40,18 @@ func (cm *connectionManager) Connect(ctx context.Context) error {
 	cm.logger.Debug("Calling StreamCommands gRPC method")
 	stream, err := cm.service.StreamCommands(ctxWithMetadata)
 	if err != nil {
-		cm.logger.Error("Error getting command stream", zap.Error(err))
+		cm.logger.Error("Error getting command stream",
+			zap.Error(err),
+			zap.String("error_type", fmt.Sprintf("%T", err)))
 		cm.connected = false
 		return err
 	}
 
 	cm.stream = stream
 	cm.connected = true
-	cm.logger.Debug("Successfully obtained command stream")
+	cm.logger.Info("Successfully obtained command stream",
+		zap.String("minion_id", cm.id),
+		zap.String("stream_ptr", fmt.Sprintf("%p", stream)))
 	cm.reconnectMgr.ResetDelay() // Reset delay on successful connection
 	return nil
 }
@@ -55,12 +59,21 @@ func (cm *connectionManager) Connect(ctx context.Context) error {
 // Disconnect closes the connection to the nexus server
 func (cm *connectionManager) Disconnect() error {
 	if cm.stream != nil {
+		cm.logger.Info("Closing command stream",
+			zap.String("minion_id", cm.id),
+			zap.String("stream_ptr", fmt.Sprintf("%p", cm.stream)))
 		err := cm.stream.CloseSend()
 		cm.stream = nil
 		cm.connected = false
+		if err != nil {
+			cm.logger.Error("Error closing stream", zap.Error(err))
+		} else {
+			cm.logger.Debug("Stream closed successfully")
+		}
 		return err
 	}
 	cm.connected = false
+	cm.logger.Debug("Disconnect called but no active stream")
 	return nil
 }
 
@@ -79,7 +92,9 @@ func (cm *connectionManager) Stream() (pb.MinionService_StreamCommandsClient, er
 
 // HandleReconnection manages reconnection logic with exponential backoff
 func (cm *connectionManager) HandleReconnection(ctx context.Context) error {
-	cm.logger.Debug("Stream is nil, attempting to reconnect")
+	cm.logger.Info("Stream connection lost, attempting to reconnect",
+		zap.String("minion_id", cm.id),
+		zap.Bool("was_connected", cm.connected))
 
 	// Check for cancellation before reconnecting
 	select {
@@ -91,13 +106,18 @@ func (cm *connectionManager) HandleReconnection(ctx context.Context) error {
 
 	// Try to reconnect with exponential backoff
 	delay := cm.reconnectMgr.GetNextDelay()
-	cm.logger.Debug("Attempting reconnection after delay", zap.Duration("delay", delay))
+	cm.logger.Info("Attempting reconnection after delay",
+		zap.Duration("delay", delay),
+		zap.String("minion_id", cm.id))
 	time.Sleep(delay)
 
 	ctxWithMetadata := metadata.AppendToOutgoingContext(ctx, "minion-id", cm.id)
 	stream, err := cm.service.StreamCommands(ctxWithMetadata)
 	if err != nil {
-		cm.logger.Error("Error reconnecting to command stream", zap.Error(err))
+		cm.logger.Error("Error reconnecting to command stream",
+			zap.Error(err),
+			zap.String("error_type", fmt.Sprintf("%T", err)),
+			zap.String("minion_id", cm.id))
 		cm.stream = nil
 		cm.connected = false
 		return err
@@ -105,7 +125,9 @@ func (cm *connectionManager) HandleReconnection(ctx context.Context) error {
 
 	cm.stream = stream
 	cm.connected = true
-	cm.logger.Debug("Successfully reconnected to command stream")
+	cm.logger.Info("Successfully reconnected to command stream",
+		zap.String("minion_id", cm.id),
+		zap.String("new_stream_ptr", fmt.Sprintf("%p", stream)))
 	cm.reconnectMgr.ResetDelay() // Reset delay on successful reconnection
 	return nil
 }
