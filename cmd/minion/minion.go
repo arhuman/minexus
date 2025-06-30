@@ -140,7 +140,9 @@ func main() {
 	heartbeatInterval := time.Duration(cfg.HeartbeatInterval) * time.Second
 	initialReconnectDelay := time.Duration(cfg.InitialReconnectDelay) * time.Second
 	maxReconnectDelay := time.Duration(cfg.MaxReconnectDelay) * time.Second
-	m := minion.NewMinion(cfg.ID, minionClient, heartbeatInterval, initialReconnectDelay, maxReconnectDelay, logger, atom)
+	shellTimeout := time.Duration(cfg.DefaultShellTimeout) * time.Second
+	streamTimeout := time.Duration(cfg.StreamTimeout) * time.Second
+	m := minion.NewMinion(cfg.ID, minionClient, heartbeatInterval, initialReconnectDelay, maxReconnectDelay, shellTimeout, streamTimeout, logger, atom)
 
 	// Create context that can be canceled
 	ctx, cancel := context.WithCancel(context.Background())

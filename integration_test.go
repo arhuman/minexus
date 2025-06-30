@@ -20,15 +20,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Debug configuration
+var debugMode = os.Getenv("DEBUG_TESTS") != ""
+
+// Debug logging helper
+func logDebug(t *testing.T, format string, args ...interface{}) {
+	if debugMode {
+		t.Logf("DEBUG: "+format, args...)
+	}
+}
+
 // Test configuration
 const (
 	dockerComposeFile = "docker-compose.yml"
 	consoleExecutable = "./console-test"
 	dbConnString      = "postgres://postgres:postgres@localhost:5432/minexus?sslmode=disable"
-	maxRetries        = 30
-	retryInterval     = 1 * time.Second
-	minionPort        = 11972 // Standard TLS port for minions
-	consolePort       = 11973 // mTLS port for console
+	maxRetries        = 15                     // Reduced from 30 (race conditions are fixed)
+	retryInterval     = 500 * time.Millisecond // Reduced from 1s
+	minionPort        = 11972                  // Standard TLS port for minions
+	consolePort       = 11973                  // mTLS port for console
 )
 
 // Integration Test Conditional Execution System
@@ -84,68 +94,230 @@ func TestIntegrationSuite(t *testing.T) {
 	}
 
 	startTime := time.Now()
-	t.Log("Running integration tests (SLOW_TESTS is set)")
+	t.Log("TIMING: Starting integration tests (SLOW_TESTS is set)")
 
 	// Setup: Ensure Docker services are running
 	setupStart := time.Now()
+	t.Log("TIMING: Starting Docker services setup...")
 	setupDockerServices(t)
 	setupDockerDuration := time.Since(setupStart)
-	t.Logf("⏱️  Docker setup took: %v", setupDockerDuration)
+	t.Logf("TIMING: Docker setup completed in %v", setupDockerDuration)
 
 	// Wait for services to be ready
 	waitStart := time.Now()
+	t.Log("TIMING: Starting service readiness checks...")
 	waitForServices(t)
 	waitDuration := time.Since(waitStart)
-	t.Logf("⏱️  Service readiness check took: %v", waitDuration)
+	t.Logf("TIMING: Service readiness check completed in %v", waitDuration)
 
 	// Build console if needed
 	buildStart := time.Now()
+	t.Log("TIMING: Starting console build...")
 	buildConsole(t)
 	buildDuration := time.Since(buildStart)
-	t.Logf("⏱️  Console build took: %v", buildDuration)
+	t.Logf("TIMING: Console build completed in %v", buildDuration)
 
 	setupTotalDuration := time.Since(startTime)
-	t.Logf("⏱️  TOTAL SETUP TIME: %v", setupTotalDuration)
+	t.Logf("TIMING: TOTAL SETUP TIME: %v", setupTotalDuration)
 
-	// Run test suites
+	// Run test suites with parallelization for significant speed improvement
 	testsStart := time.Now()
-	t.Run("ConsoleCommands", testConsoleCommands)
-	t.Run("ShellCommands", testShellCommands)
-	t.Run("FileCommands", testFileCommands)
-	t.Run("SystemCommands", testSystemCommands)
-	t.Run("DockerComposeCommands", testDockerComposeCommands)
-	t.Run("ErrorCases", testErrorCases)
+	t.Log("TIMING: Starting PARALLELIZED test suite execution...")
+
+	// Track test suite completion times with channels for parallel execution
+	testTimes := make(map[string]time.Duration)
+	var mu sync.Mutex
+
+	// Function to record test completion time
+	recordTime := func(name string, duration time.Duration) {
+		mu.Lock()
+		testTimes[name] = duration
+		mu.Unlock()
+		t.Logf("TIMING: %s test suite completed in %v", name, duration)
+	}
+
+	// Phase 1: Run independent test suites in parallel (most tests can run concurrently)
+	t.Log("TIMING: Phase 1 - Running independent test suites in parallel...")
+	phase1Start := time.Now()
+
+	t.Run("ParallelPhase1", func(t *testing.T) {
+		// Basic console and connectivity tests (can run in parallel)
+		t.Run("ConsoleCommands", func(t *testing.T) {
+			t.Parallel()
+			start := time.Now()
+			testConsoleCommands(t)
+			recordTime("ConsoleCommands", time.Since(start))
+		})
+
+		t.Run("MTLSConnectivity", func(t *testing.T) {
+			t.Parallel()
+			start := time.Now()
+			testMTLSConnectivity(t)
+			recordTime("MTLSConnectivity", time.Since(start))
+		})
+
+		t.Run("DualPortServer", func(t *testing.T) {
+			t.Parallel()
+			start := time.Now()
+			testDualPortServer(t)
+			recordTime("DualPortServer", time.Since(start))
+		})
+
+		t.Run("CertificateValidation", func(t *testing.T) {
+			t.Parallel()
+			start := time.Now()
+			testCertificateValidation(t)
+			recordTime("CertificateValidation", time.Since(start))
+		})
+
+		t.Run("CertificateEdgeCases", func(t *testing.T) {
+			t.Parallel()
+			start := time.Now()
+			testCertificateEdgeCases(t)
+			recordTime("CertificateEdgeCases", time.Since(start))
+		})
+
+		t.Run("ErrorCases", func(t *testing.T) {
+			t.Parallel()
+			start := time.Now()
+			testErrorCases(t)
+			recordTime("ErrorCases", time.Since(start))
+		})
+	})
+
+	phase1Duration := time.Since(phase1Start)
+	t.Logf("TIMING: Phase 1 (parallel basic tests) completed in %v", phase1Duration)
+
+	// Phase 2: Run command execution tests in parallel (these already use intelligent batching)
+	t.Log("TIMING: Phase 2 - Running command execution test suites in parallel...")
+	phase2Start := time.Now()
+
+	t.Run("ParallelPhase2", func(t *testing.T) {
+		t.Run("ShellCommands", func(t *testing.T) {
+			t.Parallel()
+			start := time.Now()
+			testShellCommands(t)
+			recordTime("ShellCommands", time.Since(start))
+		})
+
+		t.Run("FileCommands", func(t *testing.T) {
+			t.Parallel()
+			start := time.Now()
+			testFileCommands(t)
+			recordTime("FileCommands", time.Since(start))
+		})
+
+		t.Run("SystemCommands", func(t *testing.T) {
+			t.Parallel()
+			start := time.Now()
+			testSystemCommands(t)
+			recordTime("SystemCommands", time.Since(start))
+		})
+
+		t.Run("DockerComposeCommands", func(t *testing.T) {
+			t.Parallel()
+			start := time.Now()
+			testDockerComposeCommands(t)
+			recordTime("DockerComposeCommands", time.Since(start))
+		})
+
+		t.Run("MixedTrafficScenarios", func(t *testing.T) {
+			t.Parallel()
+			start := time.Now()
+			testMixedTrafficScenarios(t)
+			recordTime("MixedTrafficScenarios", time.Since(start))
+		})
+	})
+
+	phase2Duration := time.Since(phase2Start)
+	t.Logf("TIMING: Phase 2 (parallel command tests) completed in %v", phase2Duration)
+
+	// Phase 3: Run tests that need to be sequential (database integrity and disruptive tests)
+	t.Log("TIMING: Phase 3 - Running sequential tests that require isolation...")
+	phase3Start := time.Now()
+
+	// Database integrity should run after command tests to verify data consistency
+	dbStart := time.Now()
 	t.Run("DatabaseIntegrity", testDatabaseIntegrity)
+	dbDuration := time.Since(dbStart)
+	recordTime("DatabaseIntegrity", dbDuration)
 
-	// mTLS and dual-port testing
-	t.Run("MTLSConnectivity", testMTLSConnectivity)
-	t.Run("DualPortServer", testDualPortServer)
-	t.Run("CertificateValidation", testCertificateValidation)
-	t.Run("MixedTrafficScenarios", testMixedTrafficScenarios)
-	t.Run("CertificateEdgeCases", testCertificateEdgeCases)
-
-	// Race condition and resilience testing
+	// Race condition test must run last as it restarts services (disruptive)
+	raceConditionStart := time.Now()
 	t.Run("MinionReconnectionRaceCondition", testMinionReconnectionRaceCondition)
+	raceConditionDuration := time.Since(raceConditionStart)
+	recordTime("MinionReconnectionRaceCondition", raceConditionDuration)
+
+	phase3Duration := time.Since(phase3Start)
+	t.Logf("TIMING: Phase 3 (sequential tests) completed in %v", phase3Duration)
 
 	testsDuration := time.Since(testsStart)
 	totalDuration := time.Since(startTime)
-	t.Logf("⏱️  TEST EXECUTION TIME: %v", testsDuration)
-	t.Logf("⏱️  TOTAL INTEGRATION TEST TIME: %v", totalDuration)
+
+	// Enhanced timing summary with parallelization benefits
+	t.Log("TIMING: =============== PARALLELIZED PERFORMANCE SUMMARY ===============")
+	t.Logf("TIMING: Setup Phase:")
+	t.Logf("TIMING:   - Docker setup:        %8v (%5.1f%%)", setupDockerDuration, float64(setupDockerDuration)/float64(totalDuration)*100)
+	t.Logf("TIMING:   - Service readiness:   %8v (%5.1f%%)", waitDuration, float64(waitDuration)/float64(totalDuration)*100)
+	t.Logf("TIMING:   - Console build:       %8v (%5.1f%%)", buildDuration, float64(buildDuration)/float64(totalDuration)*100)
+	t.Logf("TIMING:   - Total setup:         %8v (%5.1f%%)", setupTotalDuration, float64(setupTotalDuration)/float64(totalDuration)*100)
+
+	t.Logf("TIMING: Parallel Execution Phases:")
+	t.Logf("TIMING:   - Phase 1 (basic):     %8v (%5.1f%%) - 6 suites in parallel", phase1Duration, float64(phase1Duration)/float64(totalDuration)*100)
+	t.Logf("TIMING:   - Phase 2 (commands):  %8v (%5.1f%%) - 5 suites in parallel", phase2Duration, float64(phase2Duration)/float64(totalDuration)*100)
+	t.Logf("TIMING:   - Phase 3 (sequential): %8v (%5.1f%%) - 2 suites sequential", phase3Duration, float64(phase3Duration)/float64(totalDuration)*100)
+
+	t.Logf("TIMING: Individual Test Suites (actual runtime in parallel context):")
+
+	// Display individual test times in sorted order
+	testNames := []string{
+		"ConsoleCommands", "ShellCommands", "FileCommands", "SystemCommands",
+		"DockerComposeCommands", "ErrorCases", "DatabaseIntegrity", "MTLSConnectivity",
+		"DualPortServer", "CertificateValidation", "MixedTrafficScenarios",
+		"CertificateEdgeCases", "MinionReconnectionRaceCondition",
+	}
+
+	totalIndividualTime := time.Duration(0)
+	for _, name := range testNames {
+		if duration, exists := testTimes[name]; exists {
+			t.Logf("TIMING:   - %-24s %8v (%5.1f%%)", name+":", duration, float64(duration)/float64(totalDuration)*100)
+			totalIndividualTime += duration
+		}
+	}
+
+	t.Logf("TIMING: Parallelization Efficiency:")
+	t.Logf("TIMING:   - Total test execution: %8v (%5.1f%%)", testsDuration, float64(testsDuration)/float64(totalDuration)*100)
+	t.Logf("TIMING:   - Sum of individual:   %8v (if run sequentially)", totalIndividualTime)
+	if totalIndividualTime > testsDuration {
+		parallelSpeedup := float64(totalIndividualTime) / float64(testsDuration)
+		t.Logf("TIMING:   - Parallel speedup:    %.1fx faster than sequential", parallelSpeedup)
+		t.Logf("TIMING:   - Time saved:          %8v", totalIndividualTime-testsDuration)
+	}
+
+	t.Logf("TIMING: TOTAL INTEGRATION TIME:   %8v", totalDuration)
+	t.Log("TIMING: ================================================================")
 }
 
 // setupDockerServices ensures nexus, nexus_db, and minion services are running
 func setupDockerServices(t *testing.T) {
-	t.Log("Checking Docker Compose services status...")
+	logDebug(t, "Checking Docker Compose services status...")
 
 	// Check if services are running
+	statusCheckStart := time.Now()
 	cmd := exec.Command("docker", "compose", "ps", "--format", "json")
 	output, err := cmd.Output()
+	statusCheckDuration := time.Since(statusCheckStart)
+	t.Logf("TIMING: Docker status check took %v", statusCheckDuration)
+
 	if err != nil {
 		t.Fatalf("Failed to check docker compose status: %v", err)
 	}
 
 	// Parse output to check service status
+	parseStart := time.Now()
 	services := parseDockerComposePS(string(output))
+	parseDuration := time.Since(parseStart)
+	t.Logf("TIMING: Docker status parsing took %v", parseDuration)
 
 	requiredServices := []string{"nexus_db", "nexus_server", "minion"}
 	missingServices := []string{}
@@ -157,9 +329,10 @@ func setupDockerServices(t *testing.T) {
 	}
 
 	if len(missingServices) > 0 {
-		t.Logf("Services not running: %v. Starting them...", missingServices)
+		logDebug(t, "TIMING: Services not running: %v. Starting them...", missingServices)
 
 		// Start services
+		serviceStartStart := time.Now()
 		cmd = exec.Command("docker", "compose", "up", "-d", "nexus_server", "minion")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -167,10 +340,12 @@ func setupDockerServices(t *testing.T) {
 		if err := cmd.Run(); err != nil {
 			t.Fatalf("Failed to start docker compose services: %v", err)
 		}
+		serviceStartDuration := time.Since(serviceStartStart)
+		t.Logf("TIMING: Docker service startup took %v", serviceStartDuration)
 
-		t.Log("Services started successfully")
+		logDebug(t, "Services started successfully")
 	} else {
-		t.Log("All required services are already running")
+		logDebug(t, "All required services are already running")
 	}
 }
 
@@ -208,100 +383,125 @@ func parseDockerComposePS(output string) map[string]string {
 
 // waitForServices waits for services to be ready
 func waitForServices(t *testing.T) {
-	t.Log("🔍 Starting service readiness checks...")
+	t.Log("TIMING: Starting service readiness checks...")
 
 	// Wait for database
-	t.Log("📊 Checking database connectivity...")
+	logDebug(t, "Checking database connectivity...")
 	dbStart := time.Now()
 	for i := 0; i < maxRetries; i++ {
 		db, err := sql.Open("postgres", dbConnString)
 		if err == nil {
 			if err := db.Ping(); err == nil {
 				db.Close()
-				t.Logf("✅ Database ready after %v (attempt %d/%d)", time.Since(dbStart), i+1, maxRetries)
+				dbDuration := time.Since(dbStart)
+				t.Logf("TIMING: Database ready after %v (attempt %d/%d)", dbDuration, i+1, maxRetries)
 				break
 			}
 			db.Close()
 		}
 
 		if i == maxRetries-1 {
-			t.Fatalf("❌ Database not ready after %d retries and %v", maxRetries, time.Since(dbStart))
+			t.Fatalf("TIMING: Database not ready after %d retries and %v", maxRetries, time.Since(dbStart))
 		}
 
 		if i%5 == 0 { // Log every 5 attempts
-			t.Logf("⏳ Database attempt %d/%d (elapsed: %v)", i+1, maxRetries, time.Since(dbStart))
+			t.Logf("TIMING: Database attempt %d/%d (elapsed: %v)", i+1, maxRetries, time.Since(dbStart))
 		}
 		time.Sleep(retryInterval)
 	}
 
 	// Check Docker health status before port tests
-	t.Log("🐳 Checking Docker Compose service health...")
+	logDebug(t, "Checking Docker Compose service health...")
+	healthCheckStart := time.Now()
 	cmd := exec.Command("docker", "compose", "ps", "--format", "table")
 	if output, err := cmd.Output(); err == nil {
-		t.Logf("Docker services status:\n%s", string(output))
+		logDebug(t, "Docker services status:\n%s", string(output))
 	}
+	healthCheckDuration := time.Since(healthCheckStart)
+	t.Logf("TIMING: Docker health check took %v", healthCheckDuration)
 
 	// Wait for nexus minion server (port 11972)
-	t.Logf("🔌 Checking nexus minion server (port %d)...", minionPort)
+	t.Logf("TIMING: Checking nexus minion server (port %d)...", minionPort)
 	minionStart := time.Now()
 	for i := 0; i < maxRetries; i++ {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", minionPort), 3*time.Second)
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", minionPort), 1*time.Second)
 		if err == nil {
 			conn.Close()
-			t.Logf("✅ Minion server ready after %v (attempt %d/%d)", time.Since(minionStart), i+1, maxRetries)
+			minionDuration := time.Since(minionStart)
+			t.Logf("TIMING: Minion server ready after %v (attempt %d/%d)", minionDuration, i+1, maxRetries)
 			break
 		}
 
 		if i == maxRetries-1 {
-			t.Fatalf("❌ Nexus minion server not ready after %d retries and %v. Last error: %v", maxRetries, time.Since(minionStart), err)
+			t.Fatalf("TIMING: Nexus minion server not ready after %d retries and %v. Last error: %v", maxRetries, time.Since(minionStart), err)
 		}
 
 		if i%3 == 0 { // Log every 3 attempts
-			t.Logf("⏳ Minion port attempt %d/%d (elapsed: %v, error: %v)", i+1, maxRetries, time.Since(minionStart), err)
+			t.Logf("TIMING: Minion port attempt %d/%d (elapsed: %v, error: %v)", i+1, maxRetries, time.Since(minionStart), err)
 		}
 		time.Sleep(retryInterval)
 	}
 
 	// Wait for nexus console server (port 11973)
-	t.Logf("🔐 Checking nexus console server (port %d)...", consolePort)
+	t.Logf("TIMING: Checking nexus console server (port %d)...", consolePort)
 	consoleStart := time.Now()
 	for i := 0; i < maxRetries; i++ {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", consolePort), 3*time.Second)
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", consolePort), 1*time.Second)
 		if err == nil {
 			conn.Close()
-			t.Logf("✅ Console server ready after %v (attempt %d/%d)", time.Since(consoleStart), i+1, maxRetries)
+			consoleDuration := time.Since(consoleStart)
+			t.Logf("TIMING: Console server ready after %v (attempt %d/%d)", consoleDuration, i+1, maxRetries)
 			break
 		}
 
 		if i == maxRetries-1 {
-			t.Fatalf("❌ Nexus console server not ready after %d retries and %v. Last error: %v", maxRetries, time.Since(consoleStart), err)
+			t.Fatalf("TIMING: Nexus console server not ready after %d retries and %v. Last error: %v", maxRetries, time.Since(consoleStart), err)
 		}
 
 		if i%3 == 0 { // Log every 3 attempts
-			t.Logf("⏳ Console port attempt %d/%d (elapsed: %v, error: %v)", i+1, maxRetries, time.Since(consoleStart), err)
+			t.Logf("TIMING: Console port attempt %d/%d (elapsed: %v, error: %v)", i+1, maxRetries, time.Since(consoleStart), err)
 		}
 		time.Sleep(retryInterval)
 	}
 
-	t.Log("🚀 All services are ready (database, minion port, console port)")
+	t.Log("TIMING: All services are ready (database, minion port, console port)")
 }
 
 // buildConsole builds the console executable if it doesn't exist
 func buildConsole(t *testing.T) {
 	if _, err := os.Stat(consoleExecutable); os.IsNotExist(err) {
-		t.Log("Building console executable...")
+		logDebug(t, "Building console executable...")
+		buildStart := time.Now()
+
+		// Backup certs
+		backupStart := time.Now()
 		cmd := exec.Command("mv", "internal/certs/files", "internal/certs/files.backup")
 		if err := cmd.Run(); err != nil {
 			t.Fatalf("Failed to backup certs: %v", err)
 		}
+		backupDuration := time.Since(backupStart)
+		t.Logf("TIMING: Cert backup took %v", backupDuration)
+
+		// Copy test certs
+		copyStart := time.Now()
 		cmd = exec.Command("cp", "-r", "internal/certs/files.backup/test", "internal/certs/files")
 		if err := cmd.Run(); err != nil {
 			t.Fatalf("Failed to copy test certs: %v", err)
 		}
+		copyDuration := time.Since(copyStart)
+		t.Logf("TIMING: Test cert copy took %v", copyDuration)
+
+		// Build console
+		goBuildStart := time.Now()
 		cmd = exec.Command("go", "build", "-o", "console-test", "./cmd/console")
 		if err := cmd.Run(); err != nil {
 			t.Fatalf("Failed to build console: %v", err)
 		}
+		goBuildDuration := time.Since(goBuildStart)
+		t.Logf("TIMING: Go build took %v", goBuildDuration)
+
+		// Cleanup
+		cleanupStart := time.Now()
 		cmd = exec.Command("rm", "-rf", "internal/certs/files")
 		if err := cmd.Run(); err != nil {
 			t.Fatalf("Failed to remove certs: %v", err)
@@ -310,6 +510,13 @@ func buildConsole(t *testing.T) {
 		if err := cmd.Run(); err != nil {
 			t.Fatalf("Failed to restore certs: %v", err)
 		}
+		cleanupDuration := time.Since(cleanupStart)
+		t.Logf("TIMING: Cleanup took %v", cleanupDuration)
+
+		totalBuildDuration := time.Since(buildStart)
+		t.Logf("TIMING: Total console build took %v", totalBuildDuration)
+	} else {
+		logDebug(t, "Console executable already exists, skipping build")
 	}
 }
 
@@ -318,12 +525,10 @@ func runConsoleCommandWithTimeout(command string, timeout time.Duration) (string
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", fmt.Sprintf("echo '%s' | %s", command, consoleExecutable))
+	cmd := exec.CommandContext(ctx, "sh", "-c", fmt.Sprintf("echo '%s' | %s --server localhost:11973", command, consoleExecutable))
 
-	// Override NEXUS_SERVER to localhost for local console execution
-	// The .env file has NEXUS_SERVER=nexus which works for Docker containers,
-	// but the locally built console needs to connect to localhost
-	cmd.Env = append(os.Environ(), "NEXUS_SERVER=localhost")
+	// Use explicit --server flag instead of environment variables for reliability
+	// This ensures the console connects to localhost:11973 regardless of .env file settings
 
 	output, err := cmd.CombinedOutput()
 	return string(output), err
@@ -405,7 +610,8 @@ func testConsoleCommands(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			output, err := runConsoleCommandWithTimeout(tt.command, 10*time.Second)
+			t.Parallel()                                                           // Enable parallel execution for console command tests
+			output, err := runConsoleCommandWithTimeout(tt.command, 5*time.Second) // Reduced from 10s
 
 			if tt.shouldWork {
 				assert.NoError(t, err, "Command should not fail")
@@ -512,18 +718,22 @@ func testShellCommands(t *testing.T) {
 		},
 	}
 
-	// 🚀 OPTIMIZATION: Execute commands in batch, then poll intelligently
+	// TIMING: Execute commands in batch, then poll intelligently
 	var commandIDs []string
 	var testNames []string
 
 	batchStart := time.Now()
+	t.Log("TIMING: Starting shell command batch execution...")
 
 	// Phase 1: Send all successful commands rapidly (no waiting between sends)
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("send_%s", tt.name), func(t *testing.T) {
 			if tt.expectError {
 				// Handle error cases immediately
+				errorStart := time.Now()
 				output, err := runConsoleCommandWithTimeout(tt.command, 2*time.Second)
+				errorDuration := time.Since(errorStart)
+				logDebug(t, "Error case '%s' handled in %v", tt.name, errorDuration)
 				assert.True(t, err != nil || strings.Contains(output, "Error") ||
 					strings.Contains(output, "Usage:") || strings.Contains(output, "Command was not accepted"),
 					"Command should fail or show error message")
@@ -546,37 +756,43 @@ func testShellCommands(t *testing.T) {
 			assert.NotEmpty(t, commandID, "Should return a command ID")
 
 			// Quick DB verification
+			dbVerifyStart := time.Now()
 			verifyCommandInDB(t, commandID)
+			dbVerifyDuration := time.Since(dbVerifyStart)
 
 			// Store for batch polling
 			commandIDs = append(commandIDs, commandID)
 			testNames = append(testNames, tt.name)
 
 			if len(commandID) >= 8 {
-				t.Logf("📤 Sent command '%s' in %v (ID: %s)", tt.name, commandExecTime, commandID[:8])
+				t.Logf("TIMING: Sent command '%s' in %v (ID: %s, DB verify: %v)", tt.name, commandExecTime, commandID[:8], dbVerifyDuration)
 			} else {
-				t.Logf("📤 Sent command '%s' in %v (ID: %s)", tt.name, commandExecTime, commandID)
+				t.Logf("TIMING: Sent command '%s' in %v (ID: %s, DB verify: %v)", tt.name, commandExecTime, commandID, dbVerifyDuration)
 			}
 		})
 	}
 
 	sendDuration := time.Since(batchStart)
-	t.Logf("🚀 BATCH SEND completed: %d commands in %v (vs %v with sequential waits)",
+	t.Logf("TIMING: BATCH SEND completed: %d commands in %v (vs %v with sequential waits)",
 		len(commandIDs), sendDuration, time.Duration(len(commandIDs))*10*time.Second)
 
 	// Phase 2: Intelligent polling for ALL results
 	if len(commandIDs) > 0 {
 		pollStart := time.Now()
-		t.Logf("🔍 Starting intelligent polling for %d commands...", len(commandIDs))
+		t.Logf("TIMING: Starting intelligent polling for %d commands...", len(commandIDs))
 
 		// Initial wait for execution to start
-		time.Sleep(2 * time.Second)
+		t.Log("TIMING: Initial wait period before polling...")
+		time.Sleep(1 * time.Second) // Reduced from 2 seconds
 
 		// Progressive polling with early termination
 		resultsFound := make(map[string]bool)
-		maxAttempts := 60 // 30 seconds max with 500ms polling
+		maxAttempts := 30 // 15 seconds max with 500ms polling (reduced from 60)
+		pollCount := 0
 
 		for attempt := 0; attempt < maxAttempts; attempt++ {
+			pollCount++
+			attemptStart := time.Now()
 			foundCount := 0
 
 			for i, commandID := range commandIDs {
@@ -594,23 +810,28 @@ func testShellCommands(t *testing.T) {
 					if len(commandID) >= 8 {
 						idDisplay = commandID[:8]
 					}
-					t.Logf("✅ Results for '%s' (%s) found after %v",
-						testNames[i], idDisplay, elapsed)
+					t.Logf("TIMING: Results for '%s' (%s) found after %v (poll attempt %d)",
+						testNames[i], idDisplay, elapsed, pollCount)
 				}
+			}
+
+			attemptDuration := time.Since(attemptStart)
+			if attempt%10 == 0 { // Log every 10 attempts
+				t.Logf("TIMING: Poll attempt %d took %v, found %d/%d results", pollCount, attemptDuration, foundCount, len(commandIDs))
 			}
 
 			// Early termination when all results found
 			if foundCount == len(commandIDs) {
 				totalPollTime := time.Since(pollStart)
-				t.Logf("🎯 ALL RESULTS FOUND: %d/%d in %v (early termination)",
-					foundCount, len(commandIDs), totalPollTime)
+				t.Logf("TIMING: ALL RESULTS FOUND: %d/%d in %v after %d poll attempts (early termination)",
+					foundCount, len(commandIDs), totalPollTime, pollCount)
 				break
 			}
 
 			// Adaptive polling: fast initially, slower later
-			pollInterval := 500 * time.Millisecond
-			if attempt > 20 {
-				pollInterval = 1 * time.Second
+			pollInterval := 300 * time.Millisecond // Reduced from 500ms
+			if attempt > 15 {                      // Reduced threshold from 20
+				pollInterval = 500 * time.Millisecond // Reduced from 1s
 			}
 
 			time.Sleep(pollInterval)
@@ -621,11 +842,12 @@ func testShellCommands(t *testing.T) {
 		originalTime := time.Duration(len(commandIDs)) * 10 * time.Second
 		timesSaved := originalTime - (sendDuration + totalPollTime)
 
-		t.Logf("🚀 OPTIMIZATION RESULTS:")
-		t.Logf("   Commands processed: %d/%d successful", finalCount, len(commandIDs))
-		t.Logf("   Total time: %v (send: %v + poll: %v)", sendDuration+totalPollTime, sendDuration, totalPollTime)
-		t.Logf("   Original approach: %v (with 10s fixed sleeps)", originalTime)
-		t.Logf("   Time saved: %v (%.1f%% faster)", timesSaved, float64(timesSaved)/float64(originalTime)*100)
+		t.Logf("TIMING: SHELL COMMAND OPTIMIZATION RESULTS:")
+		t.Logf("TIMING:   Commands processed: %d/%d successful", finalCount, len(commandIDs))
+		t.Logf("TIMING:   Total time: %v (send: %v + poll: %v)", sendDuration+totalPollTime, sendDuration, totalPollTime)
+		t.Logf("TIMING:   Poll attempts: %d", pollCount)
+		t.Logf("TIMING:   Original approach: %v (with 10s fixed sleeps)", originalTime)
+		t.Logf("TIMING:   Time saved: %v (%.1f%% faster)", timesSaved, float64(timesSaved)/float64(originalTime)*100)
 	}
 }
 
@@ -676,7 +898,7 @@ func testFileCommands(t *testing.T) {
 		},
 	}
 
-	// 🚀 OPTIMIZATION: Apply same intelligent polling to file commands
+	// TIMING: Apply same intelligent polling to file commands
 	var commandIDs []string
 	var testNames []string
 
@@ -712,9 +934,9 @@ func testFileCommands(t *testing.T) {
 			testNames = append(testNames, tt.name)
 
 			if len(commandID) >= 8 {
-				t.Logf("📁 Sent file command '%s' in %v (ID: %s)", tt.name, commandExecTime, commandID[:8])
+				t.Logf("TIMING: Sent file command '%s' in %v (ID: %s)", tt.name, commandExecTime, commandID[:8])
 			} else {
-				t.Logf("📁 Sent file command '%s' in %v (ID: %s)", tt.name, commandExecTime, commandID)
+				t.Logf("TIMING: Sent file command '%s' in %v (ID: %s)", tt.name, commandExecTime, commandID)
 			}
 		})
 	}
@@ -722,12 +944,12 @@ func testFileCommands(t *testing.T) {
 	// Phase 2: Intelligent polling for file results
 	if len(commandIDs) > 0 {
 		pollStart := time.Now()
-		t.Logf("📁 Polling for %d file operation results...", len(commandIDs))
+		t.Logf("TIMING: Polling for %d file operation results...", len(commandIDs))
 
-		time.Sleep(3 * time.Second) // Initial wait
+		time.Sleep(1 * time.Second) // Initial wait (reduced from 3s)
 
 		resultsFound := make(map[string]bool)
-		for attempt := 0; attempt < 60; attempt++ {
+		for attempt := 0; attempt < 30; attempt++ { // Reduced from 60
 			foundCount := 0
 
 			for i, commandID := range commandIDs {
@@ -745,23 +967,23 @@ func testFileCommands(t *testing.T) {
 					if len(commandID) >= 8 {
 						idDisplay = commandID[:8]
 					}
-					t.Logf("📁 File results for '%s' (%s) found after %v",
+					t.Logf("TIMING: File results for '%s' (%s) found after %v",
 						testNames[i], idDisplay, elapsed)
 				}
 			}
 
 			if foundCount == len(commandIDs) {
 				totalPollTime := time.Since(pollStart)
-				t.Logf("📁 ALL FILE RESULTS found in %v", totalPollTime)
+				t.Logf("TIMING: ALL FILE RESULTS found in %v", totalPollTime)
 				break
 			}
 
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond) // Reduced from 500ms
 		}
 
 		totalTime := time.Since(batchStart)
 		originalTime := time.Duration(len(commandIDs)) * 10 * time.Second
-		t.Logf("📁 File optimization: %v vs %v original (%.1f%% improvement)",
+		t.Logf("TIMING: File optimization: %v vs %v original (%.1f%% improvement)",
 			totalTime, originalTime, float64(originalTime-totalTime)/float64(originalTime)*100)
 	}
 }
@@ -812,7 +1034,7 @@ func testSystemCommands(t *testing.T) {
 		},
 	}
 
-	// 🚀 OPTIMIZATION: System commands with intelligent polling
+	// TIMING: System commands with intelligent polling
 	var commandIDs []string
 	var testNames []string
 
@@ -841,9 +1063,9 @@ func testSystemCommands(t *testing.T) {
 			testNames = append(testNames, tt.name)
 
 			if len(commandID) >= 8 {
-				t.Logf("🖥️ Sent system command '%s' in %v (ID: %s)", tt.name, commandExecTime, commandID[:8])
+				t.Logf("TIMING: Sent system command '%s' in %v (ID: %s)", tt.name, commandExecTime, commandID[:8])
 			} else {
-				t.Logf("🖥️ Sent system command '%s' in %v (ID: %s)", tt.name, commandExecTime, commandID)
+				t.Logf("TIMING: Sent system command '%s' in %v (ID: %s)", tt.name, commandExecTime, commandID)
 			}
 		})
 	}
@@ -851,12 +1073,12 @@ func testSystemCommands(t *testing.T) {
 	// Phase 2: Intelligent polling for system command results
 	if len(commandIDs) > 0 {
 		pollStart := time.Now()
-		t.Logf("🖥️ Polling for %d system command results...", len(commandIDs))
+		t.Logf("TIMING: Polling for %d system command results...", len(commandIDs))
 
-		time.Sleep(3 * time.Second) // Initial wait
+		time.Sleep(1 * time.Second) // Initial wait (reduced from 3s)
 
 		resultsFound := make(map[string]bool)
-		for attempt := 0; attempt < 60; attempt++ {
+		for attempt := 0; attempt < 30; attempt++ { // Reduced from 60
 			foundCount := 0
 
 			for i, commandID := range commandIDs {
@@ -874,23 +1096,23 @@ func testSystemCommands(t *testing.T) {
 					if len(commandID) >= 8 {
 						idDisplay = commandID[:8]
 					}
-					t.Logf("🖥️ System results for '%s' (%s) found after %v",
+					t.Logf("TIMING: System results for '%s' (%s) found after %v",
 						testNames[i], idDisplay, elapsed)
 				}
 			}
 
 			if foundCount == len(commandIDs) {
 				totalPollTime := time.Since(pollStart)
-				t.Logf("🖥️ ALL SYSTEM RESULTS found in %v", totalPollTime)
+				t.Logf("TIMING: ALL SYSTEM RESULTS found in %v", totalPollTime)
 				break
 			}
 
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond) // Reduced from 500ms
 		}
 
 		totalTime := time.Since(batchStart)
 		originalTime := time.Duration(len(commandIDs)) * 10 * time.Second
-		t.Logf("🖥️ System optimization: %v vs %v original (%.1f%% improvement)",
+		t.Logf("TIMING: System optimization: %v vs %v original (%.1f%% improvement)",
 			totalTime, originalTime, float64(originalTime-totalTime)/float64(originalTime)*100)
 	}
 }
@@ -1037,17 +1259,17 @@ services:
 
 			commandIDs = append(commandIDs, commandID)
 			testNames = append(testNames, tt.name)
-			t.Logf("📤 Sent docker-compose command '%s': %s", tt.name, commandID)
+			logDebug(t, "📤 Sent docker-compose command '%s': %s", tt.name, commandID)
 		})
 	}
 
 	// Wait for results with intelligent polling
 	if len(commandIDs) > 0 {
-		t.Logf("🔄 Waiting for %d docker-compose command results...", len(commandIDs))
+		t.Logf("TIMING: Waiting for %d docker-compose command results...", len(commandIDs))
 
 		pollStart := time.Now()
 		resultsFound := make(map[string]bool)
-		maxAttempts := 30
+		maxAttempts := 20 // Reduced from 30
 
 		for attempt := 0; attempt < maxAttempts; attempt++ {
 			foundCount := 0
@@ -1066,7 +1288,7 @@ services:
 					if len(commandID) >= 8 {
 						idDisplay = commandID[:8]
 					}
-					t.Logf("✅ Docker-compose results for '%s' (%s) found after %v",
+					t.Logf("TIMING: Docker-compose results for '%s' (%s) found after %v",
 						testNames[i], idDisplay, elapsed)
 				}
 			}
@@ -1074,22 +1296,22 @@ services:
 			// Early termination when all results found
 			if foundCount == len(commandIDs) {
 				totalPollTime := time.Since(pollStart)
-				t.Logf("🎯 ALL DOCKER-COMPOSE RESULTS FOUND: %d/%d in %v",
+				t.Logf("TIMING: ALL DOCKER-COMPOSE RESULTS FOUND: %d/%d in %v",
 					foundCount, len(commandIDs), totalPollTime)
 				break
 			}
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(500 * time.Millisecond) // Reduced from 1s
 		}
 
 		// Verify final results
 		finalCount := len(resultsFound)
-		t.Logf("📊 Docker-compose commands processed: %d/%d", finalCount, len(commandIDs))
+		logDebug(t, "📊 Docker-compose commands processed: %d/%d", finalCount, len(commandIDs))
 
 		// In integration tests, docker-compose commands may fail if Docker isn't available
 		// This is expected and the test should focus on command delivery, not execution success
 		if finalCount < len(commandIDs) {
-			t.Logf("ℹ️  Some docker-compose commands may have failed due to Docker availability in test environment")
+			logDebug(t, "Some docker-compose commands may have failed due to Docker availability in test environment")
 		}
 	}
 }
@@ -1160,7 +1382,8 @@ func testErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			output, err := runConsoleCommandWithTimeout(tt.command, 10*time.Second)
+			t.Parallel()                                                           // Enable parallel execution for error case tests
+			output, err := runConsoleCommandWithTimeout(tt.command, 5*time.Second) // Reduced from 10s
 
 			if tt.expectError {
 				if tt.errorText != "" {
@@ -1177,7 +1400,7 @@ func testErrorCases(t *testing.T) {
 
 			// Log error if any for debugging
 			if err != nil {
-				t.Logf("Command error: %v", err)
+				logDebug(t, "Command error: %v", err)
 			}
 		})
 	}
@@ -1212,13 +1435,13 @@ func testDatabaseIntegrity(t *testing.T) {
 	var commandCount int
 	err = db.QueryRow("SELECT COUNT(*) FROM commands").Scan(&commandCount)
 	require.NoError(t, err, "Should query command count")
-	t.Logf("Total commands in database: %d", commandCount)
+	logDebug(t, "Total commands in database: %d", commandCount)
 
 	// Check if command results were recorded
 	var resultCount int
 	err = db.QueryRow("SELECT COUNT(*) FROM command_results").Scan(&resultCount)
 	require.NoError(t, err, "Should query result count")
-	t.Logf("Total command results in database: %d", resultCount)
+	logDebug(t, "Total command results in database: %d", resultCount)
 
 	// Verify foreign key relationships
 	var orphanedResults int
@@ -1259,7 +1482,7 @@ func getNbResultsInDB(t *testing.T, commandID string) int {
 	var count int
 	err = db.QueryRow("SELECT COUNT(*) FROM command_results WHERE command_id = $1", commandID).Scan(&count)
 	require.NoError(t, err, "Should query result existence")
-	t.Logf("Command %s has %d results in database", commandID, count)
+	logDebug(t, "Command %s has %d results in database", commandID, count)
 	return count
 }
 
@@ -1386,14 +1609,15 @@ func testMTLSConnectivity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			output, err := runConsoleCommandWithTimeout(tt.command, 10*time.Second)
+			t.Parallel()                                                           // Enable parallel execution for mTLS connectivity tests
+			output, err := runConsoleCommandWithTimeout(tt.command, 5*time.Second) // Reduced from 10s
 			assert.NoError(t, err, "mTLS console command should succeed")
 
 			for _, expected := range tt.expected {
 				assert.Contains(t, output, expected, "mTLS console output should contain expected text")
 			}
 
-			t.Logf("✅ mTLS command '%s' executed successfully", tt.command)
+			t.Logf("TIMING: mTLS command '%s' executed successfully", tt.command)
 		})
 	}
 }
@@ -1404,28 +1628,28 @@ func testDualPortServer(t *testing.T) {
 
 	// Test minion port connectivity (should be accessible)
 	t.Run("MinionPortConnectivity", func(t *testing.T) {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", minionPort), 5*time.Second)
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", minionPort), 2*time.Second) // Reduced from 5s
 		assert.NoError(t, err, "Should be able to connect to minion port")
 		if conn != nil {
 			conn.Close()
 		}
-		t.Logf("✅ Minion port %d is accessible", minionPort)
+		t.Logf("TIMING: Minion port %d is accessible", minionPort)
 	})
 
 	// Test console port connectivity (should be accessible)
 	t.Run("ConsolePortConnectivity", func(t *testing.T) {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", consolePort), 5*time.Second)
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", consolePort), 2*time.Second) // Reduced from 5s
 		assert.NoError(t, err, "Should be able to connect to console port")
 		if conn != nil {
 			conn.Close()
 		}
-		t.Logf("✅ Console port %d is accessible", consolePort)
+		t.Logf("TIMING: Console port %d is accessible", consolePort)
 	})
 
 	// Test that both ports are different
 	t.Run("PortSeparation", func(t *testing.T) {
 		assert.NotEqual(t, minionPort, consolePort, "Minion and console ports should be different")
-		t.Logf("✅ Port separation verified: minion=%d, console=%d", minionPort, consolePort)
+		t.Logf("TIMING: Port separation verified: minion=%d, console=%d", minionPort, consolePort)
 	})
 
 	// Test simultaneous connections to both ports
@@ -1436,7 +1660,7 @@ func testDualPortServer(t *testing.T) {
 		// Connect to minion port
 		go func() {
 			defer wg.Done()
-			conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", minionPort), 5*time.Second)
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", minionPort), 2*time.Second) // Reduced from 5s
 			assert.NoError(t, err, "Should connect to minion port simultaneously")
 			if conn != nil {
 				time.Sleep(1 * time.Second) // Hold connection briefly
@@ -1447,7 +1671,7 @@ func testDualPortServer(t *testing.T) {
 		// Connect to console port
 		go func() {
 			defer wg.Done()
-			conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", consolePort), 5*time.Second)
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", consolePort), 2*time.Second) // Reduced from 5s
 			assert.NoError(t, err, "Should connect to console port simultaneously")
 			if conn != nil {
 				time.Sleep(1 * time.Second) // Hold connection briefly
@@ -1456,7 +1680,7 @@ func testDualPortServer(t *testing.T) {
 		}()
 
 		wg.Wait()
-		t.Log("✅ Simultaneous connections to both ports successful")
+		t.Log("TIMING: Simultaneous connections to both ports successful")
 	})
 }
 
@@ -1468,7 +1692,7 @@ func testCertificateValidation(t *testing.T) {
 	// the mTLS connection works (which proves certificate validation is working)
 	t.Run("ValidCertificateAuthentication", func(t *testing.T) {
 		// This test verifies that console can authenticate with valid certificates
-		output, err := runConsoleCommandWithTimeout("version", 10*time.Second)
+		output, err := runConsoleCommandWithTimeout("version", 5*time.Second) // Reduced from 10s
 		assert.NoError(t, err, "Console with valid certificates should authenticate successfully")
 		assert.Contains(t, output, "Console", "Should receive proper response with valid certificates")
 		t.Log("✅ Valid certificate authentication successful")
@@ -1478,7 +1702,7 @@ func testCertificateValidation(t *testing.T) {
 	t.Run("MTLSPortUsage", func(t *testing.T) {
 		// The console should be configured to use port 11973 (mTLS port)
 		// This is verified indirectly by successful console operations
-		output, err := runConsoleCommandWithTimeout("minion-list", 10*time.Second)
+		output, err := runConsoleCommandWithTimeout("minion-list", 5*time.Second) // Reduced from 10s
 		assert.NoError(t, err, "Console should successfully connect to mTLS port")
 		assert.Contains(t, output, "minions", "Should get proper response from mTLS port")
 		t.Log("✅ mTLS port usage verified")
@@ -1511,13 +1735,13 @@ func testMixedTrafficScenarios(t *testing.T) {
 		// Console operation (mTLS port)
 		go func() {
 			defer wg.Done()
-			consoleOutput, consoleErr = runConsoleCommandWithTimeout("minion-list", 15*time.Second)
+			consoleOutput, consoleErr = runConsoleCommandWithTimeout("minion-list", 8*time.Second) // Reduced from 15s
 		}()
 
 		// Minion operation (via console but targeting minion functionality)
 		go func() {
 			defer wg.Done()
-			minionOutput, minionErr = runConsoleCommandWithTimeout("command-send all echo concurrent-test", 15*time.Second)
+			minionOutput, minionErr = runConsoleCommandWithTimeout("command-send all echo concurrent-test", 8*time.Second) // Reduced from 15s
 		}()
 
 		wg.Wait()
@@ -1546,7 +1770,7 @@ func testMixedTrafficScenarios(t *testing.T) {
 		start := time.Now()
 		for _, op := range operations {
 			t.Run(op.name, func(t *testing.T) {
-				output, err := runConsoleCommandWithTimeout(op.command, 10*time.Second)
+				output, err := runConsoleCommandWithTimeout(op.command, 5*time.Second) // Reduced from 10s
 				assert.NoError(t, err, fmt.Sprintf("Rapid operation %s should succeed", op.name))
 				assert.NotEmpty(t, output, "Should receive response for each rapid operation")
 			})
@@ -1567,7 +1791,7 @@ func testMixedTrafficScenarios(t *testing.T) {
 		for i := 0; i < numConnections; i++ {
 			go func(index int) {
 				defer wg.Done()
-				output, err := runConsoleCommandWithTimeout("version", 10*time.Second)
+				output, err := runConsoleCommandWithTimeout("version", 5*time.Second) // Reduced from 10s
 				errors[index] = err
 				if err == nil && !strings.Contains(output, "Console") {
 					errors[index] = fmt.Errorf("invalid response: %s", output)
@@ -1583,7 +1807,7 @@ func testMixedTrafficScenarios(t *testing.T) {
 			if err == nil {
 				successCount++
 			} else {
-				t.Logf("Connection %d failed: %v", i, err)
+				logDebug(t, "Connection %d failed: %v", i, err)
 			}
 		}
 
@@ -1651,7 +1875,7 @@ func testCertificateEdgeCases(t *testing.T) {
 			if err == nil && strings.Contains(output, "Console") {
 				successCount++
 			} else {
-				t.Logf("Iteration %d failed: %v", i+1, err)
+				logDebug(t, "Iteration %d failed: %v", i+1, err)
 			}
 		}
 
@@ -1699,7 +1923,7 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 
 	// Step 1: Verify minion is currently connected and working
 	t.Run("PreTestMinionConnectivity", func(t *testing.T) {
-		output, err := runConsoleCommandWithTimeout("minion-list", 10*time.Second)
+		output, err := runConsoleCommandWithTimeout("minion-list", 5*time.Second) // Reduced from 10s
 		assert.NoError(t, err, "Should be able to list minions before test")
 		assert.Contains(t, output, "docker-minion", "Docker minion should be connected before test")
 		t.Log("✅ Pre-test: Minion connectivity verified")
@@ -1707,7 +1931,7 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 
 	// Step 2: Send a baseline command to ensure system is working
 	t.Run("BaselineCommandTest", func(t *testing.T) {
-		output, err := runConsoleCommandWithTimeout("command-send all echo baseline-test", 10*time.Second)
+		output, err := runConsoleCommandWithTimeout("command-send all echo baseline-test", 5*time.Second) // Reduced from 10s
 		assert.NoError(t, err, "Baseline command should succeed")
 		assert.Contains(t, output, "Command dispatched successfully", "Baseline command should be dispatched")
 
@@ -1720,7 +1944,7 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 				t.Log("✅ Baseline command completed successfully")
 				break
 			}
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond) // Reduced from 500ms
 		}
 
 		resultCount := getNbResultsInDB(t, commandID)
@@ -1748,8 +1972,8 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 		time.Sleep(5 * time.Second)
 
 		// Wait for nexus server to be ready
-		for i := 0; i < 30; i++ {
-			conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", minionPort), 2*time.Second)
+		for i := 0; i < 20; i++ { // Reduced from 30
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", minionPort), 1*time.Second) // Reduced from 2s
 			if err == nil {
 				conn.Close()
 				break
@@ -1758,7 +1982,7 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 			if i == 29 {
 				t.Fatalf("Nexus server not ready after restart within timeout")
 			}
-			time.Sleep(1 * time.Second)
+			time.Sleep(500 * time.Millisecond) // Reduced from 1s
 		}
 
 		t.Log("✅ Nexus server is responding after restart")
@@ -1769,14 +1993,14 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 		t.Log("🔍 Verifying minion reconnection after nexus restart...")
 
 		// Wait a bit longer for minion to reconnect with backoff delay
-		time.Sleep(3 * time.Second)
+		time.Sleep(2 * time.Second) // Reduced from 3s
 
 		// Check minion connectivity - this would fail if race condition occurred
 		var lastErr error
 		var lastOutput string
 
-		for i := 0; i < 20; i++ {
-			output, err := runConsoleCommandWithTimeout("minion-list", 10*time.Second)
+		for i := 0; i < 15; i++ { // Reduced from 20
+			output, err := runConsoleCommandWithTimeout("minion-list", 5*time.Second) // Reduced from 10s
 			lastErr = err
 			lastOutput = output
 
@@ -1786,7 +2010,7 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 			}
 
 			t.Logf("⏳ Attempt %d: Waiting for minion reconnection...", i+1)
-			time.Sleep(2 * time.Second)
+			time.Sleep(1 * time.Second) // Reduced from 2s
 		}
 
 		t.Errorf("Minion failed to reconnect after nexus restart. Last error: %v, Last output: %s", lastErr, lastOutput)
@@ -1797,7 +2021,7 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 		t.Log("🧪 Testing system functionality after race condition recovery...")
 
 		// Send a test command to verify end-to-end functionality
-		output, err := runConsoleCommandWithTimeout("command-send all echo race-condition-recovery-test", 15*time.Second)
+		output, err := runConsoleCommandWithTimeout("command-send all echo race-condition-recovery-test", 8*time.Second) // Reduced from 15s
 		assert.NoError(t, err, "Should be able to send commands after recovery")
 		assert.Contains(t, output, "Command dispatched successfully", "Commands should be dispatched after recovery")
 
@@ -1806,13 +2030,13 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 
 		// Wait for command results to verify full system recovery
 		resultFound := false
-		for i := 0; i < 30; i++ {
+		for i := 0; i < 20; i++ { // Reduced from 30
 			if getNbResultsInDB(t, commandID) > 0 {
 				resultFound = true
 				t.Logf("✅ Post-recovery command completed after %d attempts", i+1)
 				break
 			}
-			time.Sleep(1 * time.Second)
+			time.Sleep(500 * time.Millisecond) // Reduced from 1s
 		}
 
 		assert.True(t, resultFound, "Command should complete execution after race condition recovery")
@@ -1833,7 +2057,7 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 		logOutput, err := logCmd.Output()
 
 		if err != nil {
-			t.Logf("⚠️  Could not retrieve minion logs: %v", err)
+			logDebug(t, "⚠️  Could not retrieve minion logs: %v", err)
 			return
 		}
 
@@ -1842,16 +2066,16 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 		// Check for the original error pattern that indicated the race condition
 		if strings.Contains(logStr, "Error receiving command") &&
 			strings.Contains(logStr, "*status.Error") {
-			t.Logf("⚠️  Original race condition error pattern still present in logs")
-			t.Logf("Recent logs:\n%s", logStr)
+			logDebug(t, "⚠️  Original race condition error pattern still present in logs")
+			logDebug(t, "Recent logs:\n%s", logStr)
 		} else {
-			t.Log("✅ No race condition error patterns detected in recent logs")
+			logDebug(t, "✅ No race condition error patterns detected in recent logs")
 		}
 
 		// Look for positive indicators of the fix working
 		if strings.Contains(logStr, "Disconnected from nexus") ||
 			strings.Contains(logStr, "Connected to nexus") {
-			t.Log("✅ Proper connection state management detected in logs")
+			logDebug(t, "✅ Proper connection state management detected in logs")
 		}
 	})
 
@@ -1871,9 +2095,9 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 			assert.NoError(t, err, "Should be able to restart nexus for stress test")
 
 			// Wait for nexus server to be ready first
-			t.Log("⏳ Waiting for nexus server to be ready...")
-			for i := 0; i < 30; i++ {
-				conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", minionPort), 2*time.Second)
+			logDebug(t, "⏳ Waiting for nexus server to be ready...")
+			for i := 0; i < 20; i++ { // Reduced from 30
+				conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", minionPort), 1*time.Second) // Reduced from 2s
 				if err == nil {
 					conn.Close()
 					t.Logf("✅ Nexus server ready after %d attempts", i+1)
@@ -1882,27 +2106,27 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 				if i == 29 {
 					t.Fatalf("Nexus server not ready after restart within timeout")
 				}
-				time.Sleep(1 * time.Second)
+				time.Sleep(500 * time.Millisecond) // Reduced from 1s
 			}
 
 			// Additional wait for minion reconnection with backoff
-			t.Log("⏳ Waiting for minion reconnection...")
-			time.Sleep(3 * time.Second)
+			logDebug(t, "⏳ Waiting for minion reconnection...")
+			time.Sleep(2 * time.Second) // Reduced from 3s
 
 			// Verify connectivity with increased patience
 			connected := false
-			maxAttempts := 20 // Increased from 10
+			maxAttempts := 15 // Reduced from 20
 			for i := 0; i < maxAttempts; i++ {
-				output, err := runConsoleCommandWithTimeout("minion-list", 8*time.Second) // Increased timeout
+				output, err := runConsoleCommandWithTimeout("minion-list", 5*time.Second) // Reduced from 8s
 				if err == nil && strings.Contains(output, "docker-minion") {
 					connected = true
 					t.Logf("✅ Minion reconnected after %d attempts in iteration %d", i+1, iteration)
 					break
 				}
 				if i < maxAttempts-1 { // Don't log on last attempt
-					t.Logf("⏳ Attempt %d/%d: Waiting for minion reconnection...", i+1, maxAttempts)
+					logDebug(t, "⏳ Attempt %d/%d: Waiting for minion reconnection...", i+1, maxAttempts)
 				}
-				time.Sleep(2 * time.Second) // Increased from 1 second
+				time.Sleep(1 * time.Second) // Reduced from 2s
 			}
 
 			if !connected {
@@ -1916,12 +2140,4 @@ func testMinionReconnectionRaceCondition(t *testing.T) {
 
 		t.Log("✅ Stress test completed - race condition fix is resilient")
 	})
-
-	t.Log("🎯 Race condition test completed successfully")
-	t.Log("📊 Test Summary:")
-	t.Log("   ✅ Original race condition scenario reproduced and resolved")
-	t.Log("   ✅ Backoff delay prevents tight reconnection loops")
-	t.Log("   ✅ System recovers gracefully from nexus restarts")
-	t.Log("   ✅ End-to-end functionality verified after recovery")
-	t.Log("   ✅ Fix is resilient under stress testing")
 }

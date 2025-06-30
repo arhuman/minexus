@@ -126,7 +126,7 @@ func TestNewMinion(t *testing.T) {
 	mockClient := &mockMinionServiceClient{}
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
-	minion := NewMinion("test-id", mockClient, 30*time.Second, 5*time.Second, 60*time.Second, logger, atom)
+	minion := NewMinion("test-id", mockClient, 30*time.Second, 5*time.Second, 60*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	if minion.id != "test-id" {
 		t.Errorf("Expected minion ID to be 'test-id', got '%s'", minion.id)
@@ -165,7 +165,7 @@ func TestMinionRegistration(t *testing.T) {
 
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
-	minion := NewMinion("test-minion", mockClient, 100*time.Millisecond, 100*time.Millisecond, 5*time.Second, logger, atom)
+	minion := NewMinion("test-minion", mockClient, 100*time.Millisecond, 100*time.Millisecond, 5*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -195,7 +195,7 @@ func TestMinionRegistrationFailure(t *testing.T) {
 
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
-	minion := NewMinion("test-minion", mockClient, 100*time.Millisecond, 100*time.Millisecond, 5*time.Second, logger, atom)
+	minion := NewMinion("test-minion", mockClient, 100*time.Millisecond, 100*time.Millisecond, 5*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
@@ -269,7 +269,7 @@ func TestCommandExecution(t *testing.T) {
 			mockClient := &mockMinionServiceClient{}
 			logger := zap.NewNop()
 			atom := zap.NewAtomicLevelAt(zap.InfoLevel)
-			minion := NewMinion("test-minion", mockClient, time.Hour, time.Hour, time.Hour, logger, atom)
+			minion := NewMinion("test-minion", mockClient, time.Hour, time.Hour, time.Hour, 15*time.Second, 30*time.Second, logger, atom)
 
 			result, err := minion.executeCommand(context.Background(), tc.command)
 
@@ -295,7 +295,7 @@ func TestCommandExecutionInvalidCommand(t *testing.T) {
 	mockClient := &mockMinionServiceClient{}
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
-	minion := NewMinion("test-minion", mockClient, time.Hour, time.Hour, time.Hour, logger, atom)
+	minion := NewMinion("test-minion", mockClient, time.Hour, time.Hour, time.Hour, 15*time.Second, 30*time.Second, logger, atom)
 
 	command := &pb.Command{
 		Id:      "cmd-invalid",
@@ -348,7 +348,7 @@ func TestCommandReceiving(t *testing.T) {
 
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
-	minion := NewMinion("test-minion", mockClient, 100*time.Millisecond, 50*time.Millisecond, 5*time.Second, logger, atom)
+	minion := NewMinion("test-minion", mockClient, 100*time.Millisecond, 50*time.Millisecond, 5*time.Second, 15*time.Second, 30*time.Second, logger, atom)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -378,7 +378,7 @@ func TestLoggingCommands(t *testing.T) {
 	mockClient := &mockMinionServiceClient{}
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
-	minion := NewMinion("test-minion", mockClient, time.Hour, time.Hour, time.Hour, logger, atom)
+	minion := NewMinion("test-minion", mockClient, time.Hour, time.Hour, time.Hour, 15*time.Second, 30*time.Second, logger, atom)
 
 	testCases := []struct {
 		name            string
@@ -447,7 +447,7 @@ func TestLoggingCommandsIntegration(t *testing.T) {
 	mockClient := &mockMinionServiceClient{}
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
-	minion := NewMinion("test-minion", mockClient, time.Hour, time.Hour, time.Hour, logger, atom)
+	minion := NewMinion("test-minion", mockClient, time.Hour, time.Hour, time.Hour, 15*time.Second, 30*time.Second, logger, atom)
 
 	// Test full sequence: get level -> increase -> get level -> decrease -> get level
 
@@ -594,7 +594,7 @@ func TestCommandStatusUpdates(t *testing.T) {
 
 			logger := zap.NewNop()
 			atom := zap.NewAtomicLevelAt(zap.InfoLevel)
-			minion := NewMinion("test-minion", mockClient, time.Hour, time.Hour, time.Hour, logger, atom)
+			minion := NewMinion("test-minion", mockClient, time.Hour, time.Hour, time.Hour, 15*time.Second, 30*time.Second, logger, atom)
 
 			// Start command processing
 			processor := minion.commandProcessor.(*commandProcessor)
@@ -690,7 +690,7 @@ func TestCommandStatusUpdateRPCFailure(t *testing.T) {
 
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
-	minion := NewMinion("test-minion", mockClient, time.Hour, time.Hour, time.Hour, logger, atom)
+	minion := NewMinion("test-minion", mockClient, time.Hour, time.Hour, time.Hour, 15*time.Second, 30*time.Second, logger, atom)
 
 	// Start command processing
 	processor := minion.commandProcessor.(*commandProcessor)
@@ -740,7 +740,7 @@ func BenchmarkCommandExecution(b *testing.B) {
 	mockClient := &mockMinionServiceClient{}
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
-	minion := NewMinion("bench-minion", mockClient, time.Hour, time.Hour, time.Hour, logger, atom)
+	minion := NewMinion("bench-minion", mockClient, time.Hour, time.Hour, time.Hour, 15*time.Second, 30*time.Second, logger, atom)
 
 	command := &pb.Command{
 		Id:      "bench-cmd",

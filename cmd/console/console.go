@@ -37,7 +37,7 @@ type Console struct {
 
 // NewConsole creates a new console instance
 func NewConsole(grpcClient *GRPCClient, logger *zap.Logger) *Console {
-	registry := command.SetupCommands()
+	registry := command.SetupCommands(15 * time.Second) // Default 15s timeout for console commands
 
 	console := &Console{
 		client:        grpcClient.client,

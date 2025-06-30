@@ -120,7 +120,7 @@ func createMockConsole(mockClient *mockConsoleServiceClient) *Console {
 	}
 
 	// Initialize UI and parser manually for testing
-	registry := command.SetupCommands()
+	registry := command.SetupCommands(15 * time.Second)
 	console.ui = NewUIManager(logger, registry)
 	console.parser = NewCommandParser()
 

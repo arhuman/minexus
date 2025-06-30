@@ -35,13 +35,13 @@ type Minion struct {
 }
 
 // NewMinion creates a new minion instance
-func NewMinion(id string, service pb.MinionServiceClient, heartbeatInterval time.Duration, initialReconnectDelay, maxReconnectDelay time.Duration, logger *zap.Logger, atom zap.AtomicLevel) *Minion {
+func NewMinion(id string, service pb.MinionServiceClient, heartbeatInterval time.Duration, initialReconnectDelay, maxReconnectDelay time.Duration, shellTimeout time.Duration, streamTimeout time.Duration, logger *zap.Logger, atom zap.AtomicLevel) *Minion {
 	reconnectMgr := NewReconnectionManager(initialReconnectDelay, maxReconnectDelay, logger)
-	registry := command.SetupCommands()
+	registry := command.SetupCommands(shellTimeout)
 
 	// Create component instances
 	connectionMgr := NewConnectionManager(id, service, reconnectMgr, logger)
-	commandProcessor := NewCommandProcessor(id, registry, &atom, service, logger)
+	commandProcessor := NewCommandProcessor(id, registry, &atom, service, streamTimeout, logger)
 	registrationMgr := NewRegistrationManager(id, service, connectionMgr, logger)
 
 	return &Minion{
@@ -79,15 +79,36 @@ func (m *Minion) run(ctx context.Context) {
 
 	m.logger.Debug("Starting minion run() method")
 
-	// Step 1: Perform initial registration
-	resp, err := m.registrationMgr.Register(ctx, nil)
-	if err != nil {
-		m.logger.Error("Failed to register minion", zap.Error(err))
-		return
+	// Step 1: Perform initial registration with retries
+	var resp *pb.RegisterResponse
+	var err error
+	for attempt := 1; attempt <= 5; attempt++ {
+		resp, err = m.registrationMgr.Register(ctx, nil)
+		if err == nil && resp.Success {
+			break
+		}
+
+		if attempt < 5 {
+			delay := time.Duration(attempt) * time.Second
+			m.logger.Warn("Initial registration failed, retrying...",
+				zap.Error(err),
+				zap.Int("attempt", attempt),
+				zap.Duration("retry_delay", delay))
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+				continue
+			}
+		} else {
+			m.logger.Error("Failed to register minion after all retries", zap.Error(err))
+			return
+		}
 	}
 
 	if !resp.Success {
-		m.logger.Error("Registration unsuccessful")
+		m.logger.Error("Registration unsuccessful after retries")
 		return
 	}
 
