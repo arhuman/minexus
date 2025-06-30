@@ -1,5 +1,7 @@
 package minion
 
+// RACE CONDITION DIAGNOSIS: Added detailed logging to detect concurrent StreamCommands calls
+
 import (
 	"context"
 	"errors"
@@ -110,8 +112,50 @@ func (m *Minion) run(ctx context.Context) {
 
 		// Try to establish connection
 		if !m.connectionMgr.IsConnected() {
+			m.logger.Info("RACE CONDITION FIX: Connection not established, ensuring registration before connecting",
+				zap.String("minion_id", m.id))
+
+			// RACE CONDITION FIX: Re-register before attempting connection
+			// This ensures the nexus knows about this minion before StreamCommands is called
+			resp, err := m.registrationMgr.Register(ctx, nil)
+			if err != nil {
+				m.logger.Error("RACE CONDITION FIX: Re-registration failed during reconnection",
+					zap.String("minion_id", m.id),
+					zap.Error(err))
+				// Wait before retrying to avoid tight loop
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Second):
+					continue
+				}
+			}
+
+			if !resp.Success {
+				m.logger.Warn("RACE CONDITION FIX: Re-registration unsuccessful during reconnection",
+					zap.String("minion_id", m.id),
+					zap.String("error", resp.ErrorMessage))
+				// Wait before retrying
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Second):
+					continue
+				}
+			}
+
+			m.logger.Info("RACE CONDITION FIX: Re-registration successful, now attempting connection",
+				zap.String("minion_id", m.id))
+
 			if err := m.connectionMgr.Connect(ctx); err != nil {
+				m.logger.Warn("RACE CONDITION FIX: Connect() failed after re-registration, calling HandleReconnection()",
+					zap.String("minion_id", m.id),
+					zap.Error(err),
+					zap.String("error_type", fmt.Sprintf("%T", err)))
 				if err := m.connectionMgr.HandleReconnection(ctx); err != nil {
+					m.logger.Error("RACE CONDITION FIX: HandleReconnection() also failed",
+						zap.String("minion_id", m.id),
+						zap.Error(err))
 					if ctx.Err() != nil {
 						return
 					}
@@ -124,6 +168,7 @@ func (m *Minion) run(ctx context.Context) {
 		stream, err := m.connectionMgr.Stream()
 		if err != nil {
 			m.logger.Error("Failed to get stream", zap.Error(err))
+			m.connectionMgr.Disconnect() // Ensure clean state for retry
 			continue
 		}
 
@@ -138,6 +183,15 @@ func (m *Minion) run(ctx context.Context) {
 				zap.String("error_type", fmt.Sprintf("%T", err)),
 				zap.String("minion_id", m.id))
 			m.connectionMgr.Disconnect()
+
+			// Add backoff delay to prevent tight reconnection loops
+			// causing concurrent stream establishment attempts
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+				// Continue with reconnection after delay
+			}
 		} else if err != nil {
 			m.logger.Debug("Command processing ended due to context cancellation",
 				zap.Error(err),

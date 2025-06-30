@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"time"
 
 	"minexus/internal/command"
 	"minexus/internal/logging"
@@ -180,11 +181,58 @@ func (s *Server) StreamCommands(stream pb.MinionService_StreamCommandsServer) er
 		return status.Error(codes.Unauthenticated, "minion ID not provided")
 	}
 
-	// Get connection from registry
+	// RACE CONDITION DIAGNOSIS: Log concurrent StreamCommands attempts
+	logger.Info("RACE CONDITION DIAGNOSIS: StreamCommands called",
+		zap.String("minion_id", minionID),
+		zap.String("stream_ptr", fmt.Sprintf("%p", stream)),
+		zap.Time("timestamp", time.Now()))
+
+	// RACE CONDITION FIX: Enhanced retry connection lookup with longer backoff
+	// This handles the race condition where StreamCommands is called immediately
+	// after Register but before the registry state is fully consistent
 	minionRegistryImpl := s.minionRegistry.(*MinionRegistryImpl)
-	conn, exists := minionRegistryImpl.GetConnectionImpl(minionID)
+	var conn *MinionConnectionImpl
+	var exists bool
+
+	// RACE CONDITION DIAGNOSIS: Check registry state before retry
+	allMinions := minionRegistryImpl.ListMinions()
+	logger.Info("RACE CONDITION DIAGNOSIS: Registry state",
+		zap.String("minion_id", minionID),
+		zap.Int("total_minions", len(allMinions)),
+		zap.Strings("minion_ids", func() []string {
+			ids := make([]string, len(allMinions))
+			for i, m := range allMinions {
+				ids[i] = m.Id
+			}
+			return ids
+		}()))
+
+	// Retry up to 10 times with longer exponential backoff (max ~15 seconds total)
+	for attempt := 0; attempt < 10; attempt++ {
+		conn, exists = minionRegistryImpl.GetConnectionImpl(minionID)
+		if exists {
+			logger.Info("RACE CONDITION FIX: Connection found",
+				zap.String("minion_id", minionID),
+				zap.Int("attempt", attempt+1),
+				zap.Duration("total_retry_time", time.Since(start)))
+			break
+		}
+
+		if attempt < 9 { // Don't sleep on the last attempt
+			backoffDelay := time.Duration((attempt*attempt+1)*200) * time.Millisecond // Increased backoff
+			logger.Warn("RACE CONDITION FIX: Minion not found, retrying",
+				zap.String("minion_id", minionID),
+				zap.Int("attempt", attempt+1),
+				zap.Duration("backoff_delay", backoffDelay),
+				zap.Duration("elapsed_time", time.Since(start)))
+			time.Sleep(backoffDelay)
+		}
+	}
+
 	if !exists {
-		logger.Error("Minion not found", zap.String("minion_id", minionID))
+		logger.Error("RACE CONDITION FIX: Minion not found after all retries",
+			zap.String("minion_id", minionID),
+			zap.Duration("total_retry_time", time.Since(start)))
 		return status.Error(codes.NotFound, "minion not found")
 	}
 

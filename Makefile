@@ -198,10 +198,6 @@ cover-ci:
 		echo "0.0%"; \
 	fi
 
-## deploy_test: deploy in test
-deploy_test: doc
-	build_push.sh -i md-api-accred -k ../md-api-infra/accred -n md-api-test
-
 ## grpc: generate gRPC code
 .PHONY: grpc
 grpc:
