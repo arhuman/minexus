@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -28,6 +29,30 @@ type GRPCClient struct {
 func NewGRPCClient(cfg *config.ConsoleConfig, logger *zap.Logger) (*GRPCClient, error) {
 	// Connect to Nexus server
 	logger.Info("Connecting to Nexus server", zap.String("address", cfg.ServerAddr))
+
+	// Diagnostic: Check if we can resolve the hostname before attempting connection
+	host, port, err := net.SplitHostPort(cfg.ServerAddr)
+	if err != nil {
+		logger.Error("Invalid server address format", zap.String("address", cfg.ServerAddr), zap.Error(err))
+		return nil, fmt.Errorf("invalid server address format: %w", err)
+	}
+
+	logger.Debug("Testing hostname resolution", zap.String("hostname", host), zap.String("port", port))
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		logger.Error("Failed to resolve hostname - this is likely the source of the 'produced zero addresses' error",
+			zap.String("hostname", host),
+			zap.Error(err))
+		logger.Info("Network diagnosis: hostname resolution failed",
+			zap.String("suggestion", "If running console outside Docker, use 'localhost' instead of 'nexus_server'"))
+	} else {
+		logger.Info("Hostname resolved successfully",
+			zap.String("hostname", host),
+			zap.Int("ip_count", len(ips)))
+		for i, ip := range ips {
+			logger.Debug("Resolved IP", zap.Int("index", i), zap.String("ip", ip.String()))
+		}
+	}
 
 	// Configure mTLS credentials for console client authentication
 	logger.Info("Configuring mTLS for console client authentication")

@@ -205,15 +205,17 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 			// Enhanced gRPC error logging for diagnosis
 			if grpcErr, ok := err.(interface{ GRPCStatus() *status.Status }); ok {
 				grpcStatus := grpcErr.GRPCStatus()
-				logger.Error("gRPC stream error receiving command",
+				logger.Error("RACE CONDITION TRACKING: gRPC stream error receiving command",
 					zap.String("error_type", fmt.Sprintf("%T", err)),
 					zap.String("grpc_code", grpcStatus.Code().String()),
 					zap.String("grpc_message", grpcStatus.Message()),
 					zap.Any("grpc_details", grpcStatus.Details()),
+					zap.String("minion_id", cp.id),
 					zap.Error(err))
 			} else {
-				logger.Error("Non-gRPC error receiving command",
+				logger.Error("RACE CONDITION TRACKING: Non-gRPC error receiving command",
 					zap.String("error_type", fmt.Sprintf("%T", err)),
+					zap.String("minion_id", cp.id),
 					zap.Error(err))
 			}
 
@@ -221,12 +223,23 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 				logger.Debug("Context cancelled, stopping command loop")
 				return ctx.Err()
 			}
+			logger.Warn("RACE CONDITION TRACKING: Stream error will cause reconnection attempt",
+				zap.String("minion_id", cp.id),
+				zap.Error(err))
 			return err
 		}
 
+		logger.Debug("Processing received message",
+			zap.Any("message_type", fmt.Sprintf("%T", msg.Message)),
+			zap.Bool("has_command", msg.GetCommand() != nil),
+			zap.Bool("has_result", msg.GetResult() != nil),
+			zap.Bool("has_status", msg.GetStatus() != nil))
+
 		command := msg.GetCommand()
 		if command == nil {
-			logger.Debug("Received non-command message, skipping")
+			logger.Warn("Received non-command message, skipping",
+				zap.Any("message_type", fmt.Sprintf("%T", msg.Message)),
+				zap.String("message_content", fmt.Sprintf("%+v", msg)))
 			continue
 		}
 

@@ -72,7 +72,7 @@ func (c *DockerComposePSCommand) Execute(ctx *ExecutionContext, payload string) 
 	}
 
 	// Execute docker-compose ps command
-	cmd := exec.CommandContext(ctx.Context, "docker-compose", "-f", getComposeFile(request.Path), "ps")
+	cmd := exec.CommandContext(ctx.Context, "docker", "compose", "-f", getComposeFile(request.Path), "ps")
 	cmd.Dir = request.Path
 
 	output, err := cmd.CombinedOutput()
@@ -152,7 +152,8 @@ func (c *DockerComposeUpCommand) Execute(ctx *ExecutionContext, payload string) 
 	}
 
 	// Execute docker-compose up command
-	cmd := exec.CommandContext(ctx.Context, "docker-compose", args...)
+	fullArgs := append([]string{"compose"}, args...)
+	cmd := exec.CommandContext(ctx.Context, "docker", fullArgs...)
 	cmd.Dir = request.Path
 
 	output, err := cmd.CombinedOutput()
@@ -232,7 +233,8 @@ func (c *DockerComposeDownCommand) Execute(ctx *ExecutionContext, payload string
 	}
 
 	// Execute docker-compose command
-	cmd := exec.CommandContext(ctx.Context, "docker-compose", args...)
+	fullArgs := append([]string{"compose"}, args...)
+	cmd := exec.CommandContext(ctx.Context, "docker", fullArgs...)
 	cmd.Dir = request.Path
 
 	output, err := cmd.CombinedOutput()
@@ -243,9 +245,10 @@ func (c *DockerComposeDownCommand) Execute(ctx *ExecutionContext, payload string
 	// If stopping specific service, also remove it
 	if request.Service != "" {
 		rmArgs := []string{"-f", getComposeFile(request.Path), "rm", "-f", request.Service}
-		rmCmd := exec.CommandContext(ctx.Context, "docker-compose", rmArgs...)
+		rmFullArgs := append([]string{"compose"}, rmArgs...)
+		rmCmd := exec.CommandContext(ctx.Context, "docker", rmFullArgs...)
 		rmCmd.Dir = request.Path
-		
+
 		rmOutput, rmErr := rmCmd.CombinedOutput()
 		if rmErr != nil {
 			// Log warning but don't fail the command
@@ -291,7 +294,7 @@ func (c *DockerComposeCommand) Execute(ctx *ExecutionContext, payload string) (*
 func parseDockerComposePayload(payload string) (*DockerComposeRequest, error) {
 	// Remove the command prefix if present (e.g., "docker-compose:ps /path")
 	payload = strings.TrimSpace(payload)
-	
+
 	// Try to parse as JSON first
 	if strings.HasPrefix(payload, "{") {
 		var request DockerComposeRequest

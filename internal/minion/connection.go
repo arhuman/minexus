@@ -3,6 +3,7 @@ package minion
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	pb "minexus/protogen"
@@ -19,6 +20,8 @@ type connectionManager struct {
 	reconnectMgr *ReconnectionManager
 	stream       pb.MinionService_StreamCommandsClient
 	connected    bool
+	connecting   bool
+	connectMutex sync.Mutex
 }
 
 // NewConnectionManager creates a new connection manager
@@ -29,15 +32,43 @@ func NewConnectionManager(id string, service pb.MinionServiceClient, reconnectMg
 		logger:       logger,
 		reconnectMgr: reconnectMgr,
 		connected:    false,
+		connecting:   false,
 	}
 }
 
 // Connect establishes a connection to the nexus server
 func (cm *connectionManager) Connect(ctx context.Context) error {
-	cm.logger.Debug("Attempting to get command stream", zap.String("minion_id", cm.id))
+	// RACE CONDITION DIAGNOSIS: Check for concurrent connection attempts
+	cm.connectMutex.Lock()
+	if cm.connecting {
+		cm.connectMutex.Unlock()
+		cm.logger.Warn("RACE CONDITION DETECTED: Connect() called while already connecting",
+			zap.String("minion_id", cm.id),
+			zap.Bool("connected", cm.connected),
+			zap.Bool("connecting", cm.connecting))
+		return fmt.Errorf("connection attempt already in progress")
+	}
+	cm.connecting = true
+	cm.connectMutex.Unlock()
+
+	// Clean up connecting flag on exit
+	defer func() {
+		cm.connectMutex.Lock()
+		cm.connecting = false
+		cm.connectMutex.Unlock()
+	}()
+
+	cm.logger.Debug("Attempting to get command stream",
+		zap.String("minion_id", cm.id),
+		zap.Bool("was_connected", cm.connected))
 	ctxWithMetadata := metadata.AppendToOutgoingContext(ctx, "minion-id", cm.id)
 
-	cm.logger.Debug("Calling StreamCommands gRPC method")
+	// RACE CONDITION DIAGNOSIS: Log each StreamCommands call attempt
+	cm.logger.Info("RACE CONDITION DIAGNOSIS: About to call StreamCommands",
+		zap.String("minion_id", cm.id),
+		zap.Time("timestamp", time.Now()),
+		zap.Bool("was_connected", cm.connected))
+
 	stream, err := cm.service.StreamCommands(ctxWithMetadata)
 	if err != nil {
 		cm.logger.Error("Error getting command stream",
@@ -92,6 +123,26 @@ func (cm *connectionManager) Stream() (pb.MinionService_StreamCommandsClient, er
 
 // HandleReconnection manages reconnection logic with exponential backoff
 func (cm *connectionManager) HandleReconnection(ctx context.Context) error {
+	// RACE CONDITION DIAGNOSIS: Check for concurrent connection attempts
+	cm.connectMutex.Lock()
+	if cm.connecting {
+		cm.connectMutex.Unlock()
+		cm.logger.Warn("RACE CONDITION DETECTED: HandleReconnection() called while already connecting",
+			zap.String("minion_id", cm.id),
+			zap.Bool("connected", cm.connected),
+			zap.Bool("connecting", cm.connecting))
+		return fmt.Errorf("connection attempt already in progress")
+	}
+	cm.connecting = true
+	cm.connectMutex.Unlock()
+
+	// Clean up connecting flag on exit
+	defer func() {
+		cm.connectMutex.Lock()
+		cm.connecting = false
+		cm.connectMutex.Unlock()
+	}()
+
 	cm.logger.Info("Stream connection lost, attempting to reconnect",
 		zap.String("minion_id", cm.id),
 		zap.Bool("was_connected", cm.connected))
@@ -112,6 +163,13 @@ func (cm *connectionManager) HandleReconnection(ctx context.Context) error {
 	time.Sleep(delay)
 
 	ctxWithMetadata := metadata.AppendToOutgoingContext(ctx, "minion-id", cm.id)
+
+	// RACE CONDITION DIAGNOSIS: Log reconnection StreamCommands call
+	cm.logger.Info("RACE CONDITION DIAGNOSIS: RECONNECTION - About to call StreamCommands",
+		zap.String("minion_id", cm.id),
+		zap.Time("timestamp", time.Now()),
+		zap.Duration("delay_used", delay))
+
 	stream, err := cm.service.StreamCommands(ctxWithMetadata)
 	if err != nil {
 		cm.logger.Error("Error reconnecting to command stream",

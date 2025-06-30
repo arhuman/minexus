@@ -150,14 +150,18 @@ func (c *Console) handleCommand(command string, args []string) {
 
 // listMinions lists all connected minions
 func (c *Console) listMinions(ctx context.Context) {
+	c.logger.Debug("Attempting to list minions from nexus server")
 	response, err := c.grpc.ListMinions(ctx)
 	if err != nil {
+		c.logger.Error("Failed to list minions from nexus server", zap.Error(err))
 		c.ui.PrintError(fmt.Sprintf("Error listing minions: %v", err))
 		return
 	}
+	c.logger.Debug("Successfully received minion list", zap.Int("count", len(response.Minions)))
 
 	if len(response.Minions) == 0 {
-		c.ui.PrintInfo("No minions connected")
+		c.logger.Info("No minions are currently connected to nexus server")
+		c.ui.PrintInfo("No minions connected - Commands will not execute until minions connect")
 		return
 	}
 
@@ -199,20 +203,35 @@ func (c *Console) sendCommand(ctx context.Context, args []string) {
 		return
 	}
 
+	c.logger.Debug("Attempting to send command", zap.Strings("args", args))
+
 	// Parse the command using CommandParser
 	parsed, err := c.parser.ParseCommand(args)
 	if err != nil {
+		c.logger.Error("Failed to parse command", zap.Strings("args", args), zap.Error(err))
 		c.ui.PrintError(err.Error())
 		return
 	}
 
+	c.logger.Debug("Command parsed successfully",
+		zap.String("command_payload", parsed.Request.Command.Payload),
+		zap.String("command_id", parsed.Request.Command.Id),
+		zap.Strings("minion_ids", parsed.Request.MinionIds),
+		zap.Any("tag_selector", parsed.Request.TagSelector))
 
 	// Send command
 	response, err := c.grpc.SendCommand(ctx, parsed.Request)
 	if err != nil {
+		c.logger.Error("Failed to send command to nexus server",
+			zap.String("command_payload", parsed.Request.Command.Payload),
+			zap.Error(err))
 		c.ui.PrintError(fmt.Sprintf("Error sending command: %v", err))
 		return
 	}
+
+	c.logger.Debug("Command sent to nexus server",
+		zap.String("command_id", response.CommandId),
+		zap.Bool("accepted", response.Accepted))
 
 	if response.Accepted {
 		// Initialize command status tracking
@@ -288,18 +307,41 @@ func (c *Console) getResults(ctx context.Context, args []string) {
 	}
 
 	commandID := args[0]
+	c.logger.Debug("Attempting to get results for command", zap.String("command_id", commandID))
+
 	req := &pb.ResultRequest{
 		CommandId: commandID,
 	}
 
 	response, err := c.grpc.GetCommandResults(ctx, req)
 	if err != nil {
+		c.logger.Error("Failed to get command results from nexus server",
+			zap.String("command_id", commandID),
+			zap.Error(err))
 		c.ui.PrintError(fmt.Sprintf("Error getting results: %v", err))
 		return
 	}
 
+	c.logger.Debug("Received results response",
+		zap.String("command_id", commandID),
+		zap.Int("result_count", len(response.Results)))
+
 	if len(response.Results) == 0 {
-		c.ui.PrintInfo("No results available yet")
+		c.logger.Info("No results available yet for command", zap.String("command_id", commandID))
+
+		// Check if we have any minions connected to help diagnose the issue
+		minions, err := c.grpc.ListMinions(ctx)
+		if err != nil {
+			c.logger.Error("Failed to list minions for diagnostics", zap.Error(err))
+			c.ui.PrintInfo("No results available yet")
+		} else {
+			c.logger.Info("Minion count for diagnostics", zap.Int("minion_count", len(minions.Minions)))
+			if len(minions.Minions) == 0 {
+				c.ui.PrintInfo("No results available yet - Diagnostic: No minions are currently connected")
+			} else {
+				c.ui.PrintInfo(fmt.Sprintf("No results available yet - Diagnostic: %d minion(s) connected, command may still be executing", len(minions.Minions)))
+			}
+		}
 		return
 	}
 

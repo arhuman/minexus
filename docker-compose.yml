@@ -64,7 +64,7 @@ services:
     env_file:
       - .env
     environment:
-      - DEBUG=${DEBUG:-false}
+      - DEBUG=true
       - MINION_ID=${MINION_ID:-docker-minion}
       - NEXUS_SERVER=nexus_server
       - NEXUS_MINION_PORT=${NEXUS_MINION_PORT:-11972}
