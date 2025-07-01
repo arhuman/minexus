@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"minexus/internal/command"
-	"minexus/internal/logging"
-	pb "minexus/protogen"
+	"github.com/arhuman/minexus/internal/command"
+	"github.com/arhuman/minexus/internal/logging"
+	pb "github.com/arhuman/minexus/protogen"
 
 	_ "github.com/lib/pq"
 	"go.uber.org/zap"

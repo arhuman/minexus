@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"minexus/internal/logging"
-	pb "minexus/protogen"
+	"github.com/arhuman/minexus/internal/logging"
+	pb "github.com/arhuman/minexus/protogen"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"

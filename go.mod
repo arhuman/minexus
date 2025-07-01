@@ -1,4 +1,4 @@
-module minexus
+module github.com/arhuman/minexus
 
 go 1.23
 

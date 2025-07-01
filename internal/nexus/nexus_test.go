@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"minexus/internal/command"
-	pb "minexus/protogen"
+	"github.com/arhuman/minexus/internal/command"
+	pb "github.com/arhuman/minexus/protogen"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"go.uber.org/zap"

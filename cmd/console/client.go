@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"minexus/internal/certs"
-	"minexus/internal/config"
-	pb "minexus/protogen"
+	"github.com/arhuman/minexus/internal/certs"
+	"github.com/arhuman/minexus/internal/config"
+	pb "github.com/arhuman/minexus/protogen"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"

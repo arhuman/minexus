@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	pb "minexus/protogen"
+	pb "github.com/arhuman/minexus/protogen"
 )
 
 // ConnectionManager handles stream management and connection state for minions.

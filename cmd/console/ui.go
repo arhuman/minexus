@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"minexus/internal/command"
-	"minexus/internal/version"
+	"github.com/arhuman/minexus/internal/command"
+	"github.com/arhuman/minexus/internal/version"
 
 	"github.com/chzyer/readline"
 	"go.uber.org/zap"

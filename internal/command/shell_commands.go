@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	pb "minexus/protogen"
+	pb "github.com/arhuman/minexus/protogen"
 
 	"go.uber.org/zap"
 )

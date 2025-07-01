@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"minexus/internal/config"
-	"minexus/internal/minion"
-	"minexus/internal/version"
-	pb "minexus/protogen"
+	"github.com/arhuman/minexus/internal/config"
+	"github.com/arhuman/minexus/internal/minion"
+	"github.com/arhuman/minexus/internal/version"
+	pb "github.com/arhuman/minexus/protogen"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"

@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	pb "minexus/protogen"
+	pb "github.com/arhuman/minexus/protogen"
 
 	"go.uber.org/zap"
 
-	"minexus/internal/command"
+	"github.com/arhuman/minexus/internal/command"
 )
 
 // Minion represents a worker node that executes tasks
