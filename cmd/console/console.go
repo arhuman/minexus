@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"minexus/internal/command"
+	"minexus/internal/config"
 	"minexus/internal/logging"
 	"minexus/internal/version"
 
@@ -802,7 +803,7 @@ func main() {
 	}
 
 	// Load configuration using the new unified system
-	cfg, err := LoadConsoleConfig()
+	cfg, err := config.LoadConsoleConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
 		os.Exit(1)
