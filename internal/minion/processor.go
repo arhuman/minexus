@@ -24,8 +24,7 @@ type commandProcessor struct {
 	commandSeqNums  map[string]string // Tracks command_id -> seq_num
 	commandSeqMutex sync.RWMutex      // Protects the command sequence map
 	service         pb.MinionServiceClient
-	streamTimeout   time.Duration // Configurable timeout for stream operations
-	// HARDENING FIX: Add result buffering for stream disconnections
+	streamTimeout   time.Duration             // Configurable timeout for stream operations
 	pendingResults  []*pb.CommandResult       // Buffer for results that couldn't be sent
 	pendingStatuses []*pb.CommandStatusUpdate // Buffer for status updates that couldn't be sent
 	pendingMutex    sync.RWMutex              // Protects pending buffers
@@ -45,7 +44,6 @@ func NewCommandProcessor(id string, registry *command.Registry, atom *zap.Atomic
 		commandSeqMutex: sync.RWMutex{},
 		service:         service,
 		streamTimeout:   streamTimeout,
-		// HARDENING FIX: Initialize result buffering
 		pendingResults:  make([]*pb.CommandResult, 0),
 		pendingStatuses: make([]*pb.CommandStatusUpdate, 0),
 		pendingMutex:    sync.RWMutex{},
@@ -160,7 +158,7 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 
 	logger.Debug("Starting command listening loop")
 
-	// HARDENING FIX: Flush any pending results from previous stream disconnection
+	// Flush any pending results from previous stream disconnection
 	if err := cp.flushPendingResults(stream); err != nil {
 		logger.Warn("HARDENING: Failed to flush some pending results on stream reconnect",
 			zap.Error(err))
@@ -223,7 +221,7 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 		}
 
 		if err != nil {
-			// HARDENING FIX: Buffer any pending results before stream disconnection
+			// Buffer any pending results before stream disconnection
 			cp.logPendingBufferState()
 
 			// Enhanced gRPC error logging for diagnosis
@@ -355,8 +353,6 @@ func (cp *commandProcessor) sendCommandResult(stream pb.MinionService_StreamComm
 
 	return stream.Send(msg)
 }
-
-// HARDENING FIX: Enhanced methods with result buffering capability
 
 // flushPendingResults attempts to send all buffered results and statuses
 func (cp *commandProcessor) flushPendingResults(stream pb.MinionService_StreamCommandsClient) error {

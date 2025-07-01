@@ -1,7 +1,5 @@
 package minion
 
-// RACE CONDITION DIAGNOSIS: Added detailed logging to detect concurrent StreamCommands calls
-
 import (
 	"context"
 	"errors"
@@ -136,11 +134,11 @@ func (m *Minion) run(ctx context.Context) {
 			m.logger.Info("RACE CONDITION FIX: Connection not established, ensuring registration before connecting",
 				zap.String("minion_id", m.id))
 
-			// RACE CONDITION FIX: Re-register before attempting connection
+			// Re-register before attempting connection
 			// This ensures the nexus knows about this minion before StreamCommands is called
 			resp, err := m.registrationMgr.Register(ctx, nil)
 			if err != nil {
-				m.logger.Error("RACE CONDITION FIX: Re-registration failed during reconnection",
+				m.logger.Error("Re-registration failed during reconnection",
 					zap.String("minion_id", m.id),
 					zap.Error(err))
 				// Wait before retrying to avoid tight loop

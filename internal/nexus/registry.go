@@ -20,7 +20,6 @@ type MinionConnectionImpl struct {
 	Info      *pb.HostInfo     // Host information including ID, hostname, IP, OS, and tags
 	LastSeen  time.Time        // Timestamp of the last communication from this minion
 	CommandCh chan *pb.Command // Channel for sending commands to this minion
-	// PHASE 3.2: Removed NextSeqNumber - sequence tracking simplified with streaming
 }
 
 // GetInfo returns the host information for this minion connection.
@@ -35,7 +34,6 @@ type MinionRegistryImpl struct {
 	minionsMu sync.RWMutex
 	dbService *DatabaseServiceImpl
 	logger    *zap.Logger
-	// PHASE 3.2: Removed conflict detection maps - simplified connection tracking
 }
 
 // NewMinionRegistry creates a new minion registry instance.
@@ -44,7 +42,6 @@ func NewMinionRegistry(dbService *DatabaseServiceImpl, logger *zap.Logger) *Mini
 		minions:   make(map[string]*MinionConnectionImpl),
 		dbService: dbService,
 		logger:    logger,
-		// PHASE 3.2: Simplified initialization - removed conflict detection maps
 	}
 }
 
@@ -52,12 +49,6 @@ func NewMinionRegistry(dbService *DatabaseServiceImpl, logger *zap.Logger) *Mini
 func (r *MinionRegistryImpl) Register(hostInfo *pb.HostInfo) (*pb.RegisterResponse, error) {
 	logger, start := logging.FuncLogger(r.logger, "MinionRegistryImpl.Register")
 	defer logging.FuncExit(logger, start)
-
-	// PHASE 3.2: Simplified registration with streamlined connection tracking
-	logger.Info("Phase3.2: Registering minion with simplified tracking",
-		zap.String("minion_id", hostInfo.Id),
-		zap.String("hostname", hostInfo.Hostname),
-		zap.Int("current_minions_count", len(r.minions)))
 
 	// Initialize tags if nil
 	if hostInfo.Tags == nil {
@@ -70,7 +61,7 @@ func (r *MinionRegistryImpl) Register(hostInfo *pb.HostInfo) (*pb.RegisterRespon
 
 	// Check if minion already exists to preserve existing channel
 	if existing, exists := r.minions[hostInfo.Id]; exists {
-		logger.Info("Phase3.2: Updating existing minion registration",
+		logger.Info("Updating existing minion registration",
 			zap.String("minion_id", hostInfo.Id),
 			zap.Int("command_channel_buffer", len(existing.CommandCh)))
 
@@ -93,14 +84,13 @@ func (r *MinionRegistryImpl) Register(hostInfo *pb.HostInfo) (*pb.RegisterRespon
 	}
 
 	// Create new connection with simplified structure
-	logger.Info("Phase3.2: Creating new minion connection",
+	logger.Info("Creating new minion connection",
 		zap.String("minion_id", hostInfo.Id))
 
 	r.minions[hostInfo.Id] = &MinionConnectionImpl{
 		Info:      hostInfo,
 		LastSeen:  time.Now(),
 		CommandCh: make(chan *pb.Command, 100),
-		// PHASE 3.2: No sequence number tracking needed with streaming
 	}
 
 	// Store in database if available
@@ -115,8 +105,6 @@ func (r *MinionRegistryImpl) Register(hostInfo *pb.HostInfo) (*pb.RegisterRespon
 		AssignedId: hostInfo.Id,
 	}, nil
 }
-
-// PHASE 3.2: Removed detectConflicts and updateMaps methods - conflict detection simplified
 
 // GetConnection retrieves the connection information for a specific minion.
 func (r *MinionRegistryImpl) GetConnection(minionID string) (MinionConnection, bool) {

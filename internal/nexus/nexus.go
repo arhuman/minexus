@@ -187,7 +187,7 @@ func (s *Server) StreamCommands(stream pb.MinionService_StreamCommandsServer) er
 		zap.String("stream_ptr", fmt.Sprintf("%p", stream)),
 		zap.Time("timestamp", time.Now()))
 
-	// RACE CONDITION FIX: Enhanced retry connection lookup with longer backoff
+	// Enhanced retry connection lookup with longer backoff
 	// This handles the race condition where StreamCommands is called immediately
 	// after Register but before the registry state is fully consistent
 	minionRegistryImpl := s.minionRegistry.(*MinionRegistryImpl)
@@ -223,7 +223,7 @@ func (s *Server) StreamCommands(stream pb.MinionService_StreamCommandsServer) er
 
 		if attempt < maxAttempts-1 { // Don't sleep on the last attempt
 			backoffDelay := time.Duration((attempt*attempt + 1)) * baseDelay
-			logger.Warn("RACE CONDITION FIX: Minion not found, retrying",
+			logger.Warn("Minion not found, retrying",
 				zap.String("minion_id", minionID),
 				zap.Int("attempt", attempt+1),
 				zap.Duration("backoff_delay", backoffDelay),
@@ -233,7 +233,7 @@ func (s *Server) StreamCommands(stream pb.MinionService_StreamCommandsServer) er
 	}
 
 	if !exists {
-		logger.Error("RACE CONDITION FIX: Minion not found after all retries",
+		logger.Error("Minion not found after all retries",
 			zap.String("minion_id", minionID),
 			zap.Duration("total_retry_time", time.Since(start)))
 		return status.Error(codes.NotFound, "minion not found")
@@ -273,8 +273,6 @@ func (s *Server) StreamCommands(stream pb.MinionService_StreamCommandsServer) er
 							zap.String("minion_id", result.MinionId),
 							zap.Error(err),
 							zap.Time("timestamp", time.Now()))
-						// HARDENING FIX: Continue processing but mark as critical error
-						// TODO: Implement result buffering for retry later
 					} else {
 						logger.Info("COMMAND_FLOW_MONITORING: Result stored successfully",
 							zap.String("stage", "RESULT_STORAGE_SUCCESS"),
@@ -309,7 +307,6 @@ func (s *Server) StreamCommands(stream pb.MinionService_StreamCommandsServer) er
 							zap.String("status", status.Status),
 							zap.Error(err),
 							zap.Time("timestamp", time.Now()))
-						// HARDENING FIX: Continue processing but log the issue
 					} else {
 						logger.Debug("COMMAND_FLOW_MONITORING: Status updated successfully",
 							zap.String("stage", "STATUS_UPDATE_SUCCESS"),
@@ -520,7 +517,6 @@ func (s *Server) SendCommand(ctx context.Context, req *pb.CommandRequest) (*pb.C
 	logger, start := logging.FuncLogger(s.logger, "Nexus.SendCommand")
 	defer logging.FuncExit(logger, start)
 
-	// HARDENING FIX: Command Flow Monitoring - Entry point logging
 	logger.Info("COMMAND_FLOW_MONITORING: Command dispatch initiated",
 		zap.String("stage", "DISPATCH_START"),
 		zap.Strings("requested_minion_ids", req.MinionIds),
@@ -580,9 +576,9 @@ func (s *Server) SendCommand(ctx context.Context, req *pb.CommandRequest) (*pb.C
 			}
 		}
 
-		// HARDENING FIX: Log database storage issues but don't fail dispatch
+		// Log database storage issues but don't fail dispatch
 		if len(dbErrors) > 0 {
-			logger.Warn("HARDENING: Some commands failed to persist - may cause result retrieval issues",
+			logger.Warn("Some commands failed to persist - may cause result retrieval issues",
 				zap.String("command_id", commandID),
 				zap.Int("failed_storage_count", len(dbErrors)),
 				zap.Strings("storage_errors", dbErrors))
@@ -600,10 +596,8 @@ func (s *Server) SendCommand(ctx context.Context, req *pb.CommandRequest) (*pb.C
 
 	for _, minionID := range targets {
 		if conn, exists := minionRegistryImpl.GetConnectionImpl(minionID); exists {
-			// HARDENING FIX: Replace non-blocking select with timeout-based blocking
+			// Replace non-blocking select with timeout-based blocking
 			// This prevents silent command dropping and ensures proper error handling
-			// Balanced timeout with test override
-			// Use optimized timeout (formerly test-only, now default)
 			timeout := 100 * time.Millisecond // Optimized: reduced from 1s to 100ms for faster dispatch
 			ctx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
@@ -645,7 +639,7 @@ func (s *Server) SendCommand(ctx context.Context, req *pb.CommandRequest) (*pb.C
 		}
 	}
 
-	// HARDENING FIX: Commands are accepted if stored in database, regardless of channel delivery
+	// Commands are accepted if stored in database, regardless of channel delivery
 	// Channel delivery failures (like full channels) should not cause command rejection
 	if successfulDispatches == 0 {
 		logger.Warn("COMMAND_FLOW_MONITORING: All channel deliveries failed",
@@ -655,7 +649,7 @@ func (s *Server) SendCommand(ctx context.Context, req *pb.CommandRequest) (*pb.C
 			zap.Strings("errors", dispatchErrors),
 			zap.Time("timestamp", time.Now()))
 	} else {
-		// HARDENING FIX: Log partial failures for monitoring
+		// Log partial failures for monitoring
 		if len(dispatchErrors) > 0 {
 			logger.Warn("COMMAND_FLOW_MONITORING: Partial dispatch failure",
 				zap.String("stage", "DISPATCH_PARTIAL_FAILURE"),

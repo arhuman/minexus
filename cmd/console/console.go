@@ -17,8 +17,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// Console represents the interactive console
-
 // CommandStatus tracks the status of a command for each minion
 type CommandStatus struct {
 	CommandID string
@@ -263,7 +261,6 @@ func (c *Console) sendCommand(ctx context.Context, args []string) {
 		// Check if command result are available immediately **in database**
 		// if yes returns them immediately
 		// (with a header saying that further results will be available later through result-get)
-		// Check if immediate results are available in database
 		resultsReq := &pb.ResultRequest{
 			CommandId: response.CommandId,
 		}
