@@ -851,9 +851,6 @@ func NewFileCommand() *UnifiedFileCommand {
 	}
 }
 
-// addUnixOwnerInfo is implemented in platform-specific files
-// to avoid syscall.Stat_t references that would cause compile errors on Windows
-
 // Execute implements ExecutableCommand interface and routes to appropriate file operation
 func (c *UnifiedFileCommand) Execute(ctx *ExecutionContext, payload string) (*pb.CommandResult, error) {
 	request, err := parseFileRequest(payload)

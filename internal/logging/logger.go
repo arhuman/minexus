@@ -17,5 +17,5 @@ func FuncLogger(logger *zap.Logger, funcName string) (*zap.Logger, time.Time) {
 
 // FuncExit logs the exit point of a function with elapsed time at debug level
 func FuncExit(logger *zap.Logger, start time.Time) {
-	logger.With(zap.Duration("elapsed", time.Since(start))).Debug("function completed")
+	logger.With(zap.Duration("elapsed", time.Since(start))).Debug("function exited")
 }

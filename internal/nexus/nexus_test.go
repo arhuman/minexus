@@ -189,9 +189,6 @@ func TestSetTagsWithMissingDatabaseRecord(t *testing.T) {
 		WithArgs(minionID, "test-host", "192.168.1.100", "linux", sqlmock.AnyArg(), sqlmock.AnyArg(), `{"env":"test"}`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	// PHASE 3: Registration history operations removed
-	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
-
 	// Create the SetTags request
 	req := &pb.SetTagsRequest{
 		MinionId: minionID,
@@ -258,9 +255,6 @@ func TestUpdateTagsWithMissingDatabaseRecord(t *testing.T) {
 	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7\\) ON CONFLICT \\(id\\) DO UPDATE SET hostname = EXCLUDED.hostname, ip = EXCLUDED.ip, os = EXCLUDED.os, last_seen = EXCLUDED.last_seen, tags = EXCLUDED.tags").
 		WithArgs(minionID, "test-host-2", "192.168.1.101", "darwin", sqlmock.AnyArg(), sqlmock.AnyArg(), `{"env":"production","existing":"tag"}`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
-
-	// PHASE 3: Registration history operations removed
-	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
 
 	// Create the UpdateTags request
 	req := &pb.UpdateTagsRequest{
@@ -491,9 +485,6 @@ func TestMinionRegistrationDataIntegrity(t *testing.T) {
 		WithArgs(testMinionID, testHostname, testIP, testOS, sqlmock.AnyArg(), sqlmock.AnyArg(), "{}").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	// PHASE 3: Registration history operations removed
-	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
-
 	// Call Register
 	response, err := server.Register(context.Background(), hostInfo)
 	if err != nil {
@@ -550,7 +541,6 @@ func TestDatabaseSchemaConsistency(t *testing.T) {
 	testIP := "192.168.1.100"
 	testOS := "linux"
 
-	// Step 1: Register minion
 	hostInfo := &pb.HostInfo{
 		Id:       testMinionID,
 		Hostname: testHostname,
@@ -564,15 +554,12 @@ func TestDatabaseSchemaConsistency(t *testing.T) {
 		WithArgs(testMinionID, testHostname, testIP, testOS, sqlmock.AnyArg(), sqlmock.AnyArg(), "{}").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	// PHASE 3: Registration history operations removed
-	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
-
 	_, err = server.Register(context.Background(), hostInfo)
 	if err != nil {
 		t.Fatalf("Register failed: %v", err)
 	}
 
-	// Step 2: List minions from in-memory storage and verify the data consistency
+	// List minions from in-memory storage and verify the data consistency
 	// This would fail if there was data confusion during registration
 	list, err := server.ListMinions(context.Background(), &pb.Empty{})
 	if err != nil {
@@ -640,9 +627,6 @@ func TestMinionRegistrationWithPredefinedID(t *testing.T) {
 	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7\\) ON CONFLICT \\(id\\) DO UPDATE SET hostname = EXCLUDED.hostname, ip = EXCLUDED.ip, os = EXCLUDED.os, last_seen = EXCLUDED.last_seen, tags = EXCLUDED.tags").
 		WithArgs(predefinedMinionID, actualHostname, actualIP, actualOS, sqlmock.AnyArg(), sqlmock.AnyArg(), "{}").
 		WillReturnResult(sqlmock.NewResult(1, 1))
-
-	// PHASE 3: Registration history operations removed
-	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
 
 	// Register the minion
 	response, err := server.Register(context.Background(), hostInfo)
@@ -1618,9 +1602,6 @@ func TestRegisterWithExistingRecord(t *testing.T) {
 		WithArgs(testMinionID, testHostname, testIP, testOS, sqlmock.AnyArg(), sqlmock.AnyArg(), `{"env":"test"}`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	// PHASE 3: Registration history operations removed
-	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
-
 	response, err := server.Register(context.Background(), hostInfo)
 	if err != nil {
 		t.Fatalf("Register failed: %v", err)
@@ -1676,9 +1657,6 @@ func TestRegisterWithoutID(t *testing.T) {
 	mock.ExpectExec("INSERT INTO hosts \\(id, hostname, ip, os, first_seen, last_seen, tags\\) VALUES \\(\\$1, \\$2, \\$3, \\$4, \\$5, \\$6, \\$7\\) ON CONFLICT \\(id\\) DO UPDATE SET hostname = EXCLUDED.hostname, ip = EXCLUDED.ip, os = EXCLUDED.os, last_seen = EXCLUDED.last_seen, tags = EXCLUDED.tags").
 		WithArgs(sqlmock.AnyArg(), "new-host", "192.168.1.150", "linux", sqlmock.AnyArg(), sqlmock.AnyArg(), "{}").
 		WillReturnResult(sqlmock.NewResult(1, 1))
-
-	// PHASE 3: Registration history operations removed
-	// mock.ExpectExec("INSERT INTO registration_history") - NO LONGER NEEDED
 
 	response, err := server.Register(context.Background(), hostInfo)
 	if err != nil {

@@ -38,7 +38,6 @@ func NewDatabaseService(db *sql.DB, logger *zap.Logger) *DatabaseServiceImpl {
 // StoreHost persists host information to the database.
 func (d *DatabaseServiceImpl) StoreHost(ctx context.Context, hostInfo *pb.HostInfo) error {
 	if d == nil || d.db == nil {
-		// HARDENING FIX: Replace silent nil returns with proper error handling
 		return fmt.Errorf("database service unavailable - cannot store host %s", hostInfo.Id)
 	}
 
@@ -76,7 +75,6 @@ func (d *DatabaseServiceImpl) StoreHost(ctx context.Context, hostInfo *pb.HostIn
 // UpdateHost updates existing host information in the database.
 func (d *DatabaseServiceImpl) UpdateHost(ctx context.Context, hostInfo *pb.HostInfo) error {
 	if d == nil || d.db == nil {
-		// HARDENING FIX: Replace silent nil returns with proper error handling
 		return fmt.Errorf("database service unavailable - cannot update host %s", hostInfo.Id)
 	}
 
@@ -113,7 +111,6 @@ func (d *DatabaseServiceImpl) UpdateHost(ctx context.Context, hostInfo *pb.HostI
 // StoreCommand persists command information to the database.
 func (d *DatabaseServiceImpl) StoreCommand(ctx context.Context, commandID, minionID, payload string) error {
 	if d == nil || d.db == nil {
-		// HARDENING FIX: Replace silent nil returns with proper error handling
 		return fmt.Errorf("database service unavailable - cannot store command %s for minion %s", commandID, minionID)
 	}
 
@@ -143,7 +140,6 @@ func (d *DatabaseServiceImpl) StoreCommand(ctx context.Context, commandID, minio
 // UpdateCommandStatus updates the status of a command in the database.
 func (d *DatabaseServiceImpl) UpdateCommandStatus(ctx context.Context, commandID string, status string) error {
 	if d == nil || d.db == nil {
-		// HARDENING FIX: Replace silent nil returns with proper error handling
 		return fmt.Errorf("database service unavailable - cannot update status for command %s to %s", commandID, status)
 	}
 
@@ -185,7 +181,6 @@ func (d *DatabaseServiceImpl) UpdateCommandStatus(ctx context.Context, commandID
 // StoreCommandResult persists command execution results to the database with transaction safety.
 func (d *DatabaseServiceImpl) StoreCommandResult(ctx context.Context, result *pb.CommandResult) error {
 	if d == nil || d.db == nil {
-		// HARDENING FIX: Return proper error instead of silent nil
 		return fmt.Errorf("database service unavailable - cannot store command result for command %s", result.CommandId)
 	}
 
@@ -206,7 +201,7 @@ func (d *DatabaseServiceImpl) StoreCommandResult(ctx context.Context, result *pb
 			time.Sleep(delay)
 		}
 
-		// HARDENING FIX: Add transaction boundaries for atomic operations
+		// Add transaction boundaries for atomic operations
 		tx, err := d.db.BeginTx(ctx, nil)
 		if err != nil {
 			logger.Error("HARDENING: Failed to begin transaction for result storage",
@@ -284,7 +279,7 @@ func (d *DatabaseServiceImpl) StoreCommandResult(ctx context.Context, result *pb
 			continue
 		}
 
-		// HARDENING FIX: Update command status to COMPLETED within same transaction
+		// Update command status to COMPLETED within same transaction
 		_, err = tx.ExecContext(ctx,
 			"UPDATE commands SET status = $1 WHERE id = $2 AND host_id = $3",
 			"COMPLETED", result.CommandId, result.MinionId)
@@ -402,7 +397,6 @@ func (d *DatabaseServiceImpl) GetCommandResults(ctx context.Context, commandID s
 // This is a helper method used by the registry for tag operations.
 func (d *DatabaseServiceImpl) updateHostTags(ctx context.Context, minionID string, hostInfo *pb.HostInfo) error {
 	if d == nil || d.db == nil {
-		// HARDENING FIX: Replace silent nil returns with proper error handling
 		return fmt.Errorf("database service unavailable - cannot update tags for host %s", minionID)
 	}
 

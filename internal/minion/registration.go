@@ -19,7 +19,6 @@ type registrationManager struct {
 	service       pb.MinionServiceClient
 	connectionMgr ConnectionManager
 	logger        *zap.Logger
-	// PHASE 3: registrationCount removed - no longer tracking registration history
 }
 
 // NewRegistrationManager creates a new registration manager
@@ -59,9 +58,6 @@ func (rm *registrationManager) Register(ctx context.Context, hostInfo *pb.HostIn
 	}
 
 	rm.logger.Debug("Registration successful")
-
-	// PHASE 3: Registration history tracking removed
-	rm.logger.Info("Phase3 Cleanup: Skipping registration history update")
 
 	// If server assigned a new ID, update it
 	if resp.AssignedId != "" && resp.AssignedId != rm.id {
@@ -110,9 +106,6 @@ func (rm *registrationManager) PeriodicRegister(ctx context.Context, interval ti
 				continue
 			}
 
-			// PHASE 3: Registration history tracking removed
-			rm.logger.Info("Phase3 Cleanup: Skipping registration history update in periodic registration")
-
 			rm.logger.Debug("Periodic registration successful",
 				zap.String("minion_id", rm.id))
 		}
@@ -121,8 +114,6 @@ func (rm *registrationManager) PeriodicRegister(ctx context.Context, interval ti
 
 // createHostInfo creates host information for registration
 func (rm *registrationManager) createHostInfo() (*pb.HostInfo, error) {
-	// PHASE 3: Registration history creation removed
-	rm.logger.Info("Phase3 Cleanup: Skipping registration history creation in createHostInfo")
 
 	return &pb.HostInfo{
 		Id:       rm.id,
@@ -130,7 +121,6 @@ func (rm *registrationManager) createHostInfo() (*pb.HostInfo, error) {
 		Ip:       rm.getIPAddress(),
 		Os:       runtime.GOOS,
 		Tags:     make(map[string]string),
-		// PHASE 3: RegistrationHistory field removed
 	}, nil
 }
 
