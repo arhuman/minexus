@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	pb "minexus/protogen"
+	pb "github.com/arhuman/minexus/protogen"
 )
 
 // CommandParser handles command parsing and validation

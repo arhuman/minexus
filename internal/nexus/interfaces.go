@@ -3,7 +3,7 @@ package nexus
 import (
 	"context"
 
-	pb "minexus/protogen"
+	pb "github.com/arhuman/minexus/protogen"
 )
 
 // MinionConnection represents the interface for a minion connection object.

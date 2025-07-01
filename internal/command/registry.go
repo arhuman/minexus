@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	pb "minexus/protogen"
+	pb "github.com/arhuman/minexus/protogen"
 )
 
 // ExecutableCommand represents a simplified command that can execute and provides metadata

@@ -13,12 +13,12 @@ import (
 	"syscall"
 	"time"
 
-	"minexus/internal/certs"
-	"minexus/internal/config"
-	"minexus/internal/logging"
-	"minexus/internal/nexus"
-	"minexus/internal/version"
-	pb "minexus/protogen"
+	"github.com/arhuman/minexus/internal/certs"
+	"github.com/arhuman/minexus/internal/config"
+	"github.com/arhuman/minexus/internal/logging"
+	"github.com/arhuman/minexus/internal/nexus"
+	"github.com/arhuman/minexus/internal/version"
+	pb "github.com/arhuman/minexus/protogen"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"

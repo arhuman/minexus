@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"minexus/internal/command"
-	"minexus/internal/config"
-	"minexus/internal/logging"
-	"minexus/internal/version"
+	"github.com/arhuman/minexus/internal/command"
+	"github.com/arhuman/minexus/internal/config"
+	"github.com/arhuman/minexus/internal/logging"
+	"github.com/arhuman/minexus/internal/version"
 
 	// Import with correct package name
-	pb "minexus/protogen"
+	pb "github.com/arhuman/minexus/protogen"
 
 	"go.uber.org/zap"
 )
@@ -708,6 +708,279 @@ func (c *Console) showCommandStatus(ctx context.Context, args []string) {
 	default:
 		c.ui.PrintError("Invalid target type. Use 'all', 'minion <minion-id>', or 'stats'")
 	}
+}
+
+// showCommandStatus2 displays the current status of commands with reduced cyclomatic complexity
+func (c *Console) showCommandStatus2(ctx context.Context, args []string) {
+	if len(args) == 0 {
+		c.ui.PrintError("Usage: command-status <all | minion <minion-id> | stats>")
+		return
+	}
+
+	// Get list of all minions for statistics
+	minions, err := c.grpc.ListMinions(ctx)
+	if err != nil {
+		c.ui.PrintError(fmt.Sprintf("Error getting minion list: %v", err))
+		return
+	}
+
+	// Delegate to specific handlers based on command type
+	switch args[0] {
+	case "all":
+		c.showAllCommandsStatus()
+	case "minion":
+		c.showMinionCommandStatus(ctx, args, minions.Minions)
+	case "stats":
+		c.showCommandStatsStatus(minions.Minions)
+	default:
+		c.ui.PrintError("Invalid target type. Use 'all', 'minion <minion-id>', or 'stats'")
+	}
+}
+
+// showAllCommandsStatus shows status for all commands
+func (c *Console) showAllCommandsStatus() {
+	if len(c.commandStatus) == 0 {
+		c.ui.PrintInfo("No commands have been executed")
+		return
+	}
+
+	fmt.Println("Command Status Overview:")
+	fmt.Println("Command ID                            | Pending | Received | Executing | Completed | Failed | Total")
+	fmt.Println("------------------------------------ | -------- | -------- | --------- | --------- | ------- | -----")
+
+	totalCounts := c.initializeStatusCounts()
+
+	for cmdID, status := range c.commandStatus {
+		counts := c.calculateCommandCounts(status)
+		c.updateTotalCounts(totalCounts, counts)
+		c.printCommandRow(cmdID, counts)
+	}
+
+	c.printTotalRow(totalCounts)
+}
+
+// showMinionCommandStatus shows detailed status for a specific minion
+func (c *Console) showMinionCommandStatus(ctx context.Context, args []string, minions []*pb.HostInfo) {
+	if len(args) < 2 {
+		c.ui.PrintError("Usage: command-status minion <minion-id>")
+		return
+	}
+
+	minionID := args[1]
+	minionInfo := c.findMinionInfo(minionID, minions)
+
+	c.printMinionHeader(minionID, minionInfo)
+	c.printMinionCommandsTable(ctx, minionID)
+}
+
+// showCommandStatsStatus shows statistics per minion
+func (c *Console) showCommandStatsStatus(minions []*pb.HostInfo) {
+	fmt.Println("Command Statistics by Minion:")
+	fmt.Println("Minion ID                            | Hostname          | Total | Completed | Failed | Success Rate")
+	fmt.Println("------------------------------------ | ----------------- | ----- | --------- | ------ | ------------")
+
+	minionStats := c.initializeMinionStats(minions)
+	c.collectMinionStatistics(minionStats)
+	totalCommands, totalCompleted, totalFailed := c.printMinionStats(minions, minionStats)
+	c.printStatsTotal(totalCommands, totalCompleted, totalFailed)
+}
+
+// initializeStatusCounts creates and returns initial status counts
+func (c *Console) initializeStatusCounts() map[string]int {
+	return map[string]int{
+		"PENDING":   0,
+		"RECEIVED":  0,
+		"EXECUTING": 0,
+		"COMPLETED": 0,
+		"FAILED":    0,
+	}
+}
+
+// calculateCommandCounts calculates counts for a single command
+func (c *Console) calculateCommandCounts(status *CommandStatus) map[string]int {
+	counts := c.initializeStatusCounts()
+	for _, st := range status.Statuses {
+		counts[st]++
+	}
+	return counts
+}
+
+// updateTotalCounts updates total counts with command counts
+func (c *Console) updateTotalCounts(totalCounts, counts map[string]int) {
+	for status, count := range counts {
+		totalCounts[status] += count
+	}
+}
+
+// printCommandRow prints a single command status row
+func (c *Console) printCommandRow(cmdID string, counts map[string]int) {
+	total := c.sumCounts(counts)
+	fmt.Printf("%-36s | %-8d | %-8d | %-9d | %-9d | %-7d | %-5d\n",
+		cmdID,
+		counts["PENDING"],
+		counts["RECEIVED"],
+		counts["EXECUTING"],
+		counts["COMPLETED"],
+		counts["FAILED"],
+		total)
+}
+
+// printTotalRow prints the total summary row
+func (c *Console) printTotalRow(totalCounts map[string]int) {
+	totalSum := c.sumCounts(totalCounts)
+	fmt.Println("------------------------------------ | -------- | -------- | --------- | --------- | ------- | -----")
+	fmt.Printf("%-36s | %-8d | %-8d | %-9d | %-9d | %-7d | %-5d\n",
+		"TOTAL",
+		totalCounts["PENDING"],
+		totalCounts["RECEIVED"],
+		totalCounts["EXECUTING"],
+		totalCounts["COMPLETED"],
+		totalCounts["FAILED"],
+		totalSum)
+}
+
+// sumCounts calculates the sum of all counts
+func (c *Console) sumCounts(counts map[string]int) int {
+	total := 0
+	for _, count := range counts {
+		total += count
+	}
+	return total
+}
+
+// findMinionInfo finds minion info by ID
+func (c *Console) findMinionInfo(minionID string, minions []*pb.HostInfo) *pb.HostInfo {
+	for _, m := range minions {
+		if m.Id == minionID {
+			return m
+		}
+	}
+	return nil
+}
+
+// printMinionHeader prints the header for minion command status
+func (c *Console) printMinionHeader(minionID string, minionInfo *pb.HostInfo) {
+	if minionInfo != nil {
+		fmt.Printf("Command status for minion %s (%s):\n", minionID, minionInfo.Hostname)
+	} else {
+		fmt.Printf("Command status for minion %s:\n", minionID)
+	}
+}
+
+// printMinionCommandsTable prints the table of commands for a minion
+func (c *Console) printMinionCommandsTable(ctx context.Context, minionID string) {
+	fmt.Println("Command ID                            | Status    | Exit Code | Timestamp  | Command")
+	fmt.Println("------------------------------------ | --------- | --------- | ---------- | --------")
+
+	found := false
+	for cmdID, status := range c.commandStatus {
+		if st, exists := status.Statuses[minionID]; exists {
+			found = true
+			exitCode := c.getExitCodeForMinion(ctx, cmdID, minionID)
+			fmt.Printf("%-36s | %-9s | %-9d | %-10s | %s\n",
+				cmdID,
+				st,
+				exitCode,
+				status.Timestamp.Format("15:04:05"),
+				"") // command field is empty in original
+		}
+	}
+
+	if !found {
+		c.ui.PrintInfo("No commands found for this minion")
+	}
+}
+
+// getExitCodeForMinion gets the exit code for a specific minion and command
+func (c *Console) getExitCodeForMinion(ctx context.Context, cmdID, minionID string) int {
+	req := &pb.ResultRequest{CommandId: cmdID}
+	results, err := c.grpc.GetCommandResults(ctx, req)
+	if err != nil || len(results.Results) == 0 {
+		return -1
+	}
+
+	for _, result := range results.Results {
+		if result.MinionId == minionID {
+			return int(result.ExitCode)
+		}
+	}
+	return -1
+}
+
+// initializeMinionStats initializes statistics for all minions
+func (c *Console) initializeMinionStats(minions []*pb.HostInfo) map[string]map[string]int {
+	minionStats := make(map[string]map[string]int)
+	for _, minion := range minions {
+		minionStats[minion.Id] = map[string]int{
+			"total":     0,
+			"completed": 0,
+			"failed":    0,
+		}
+	}
+	return minionStats
+}
+
+// collectMinionStatistics collects statistics for all minions
+func (c *Console) collectMinionStatistics(minionStats map[string]map[string]int) {
+	for _, status := range c.commandStatus {
+		for minionID, st := range status.Statuses {
+			if stats, exists := minionStats[minionID]; exists {
+				stats["total"]++
+				if st == "COMPLETED" {
+					stats["completed"]++
+				} else if st == "FAILED" {
+					stats["failed"]++
+				}
+			}
+		}
+	}
+}
+
+// printMinionStats prints statistics for each minion and returns totals
+func (c *Console) printMinionStats(minions []*pb.HostInfo, minionStats map[string]map[string]int) (int, int, int) {
+	totalCommands := 0
+	totalCompleted := 0
+	totalFailed := 0
+
+	for _, minion := range minions {
+		stats := minionStats[minion.Id]
+		successRate := c.calculateSuccessRate(stats["completed"], stats["total"])
+
+		fmt.Printf("%-36s | %-17s | %-5d | %-9d | %-6d | %6.1f%%\n",
+			minion.Id,
+			minion.Hostname,
+			stats["total"],
+			stats["completed"],
+			stats["failed"],
+			successRate)
+
+		totalCommands += stats["total"]
+		totalCompleted += stats["completed"]
+		totalFailed += stats["failed"]
+	}
+
+	return totalCommands, totalCompleted, totalFailed
+}
+
+// printStatsTotal prints the total statistics row
+func (c *Console) printStatsTotal(totalCommands, totalCompleted, totalFailed int) {
+	fmt.Println("------------------------------------ | ----------------- | ----- | --------- | ------ | ------------")
+	overallSuccessRate := c.calculateSuccessRate(totalCompleted, totalCommands)
+	fmt.Printf("%-36s | %-17s | %-5d | %-9d | %-6d | %6.1f%%\n",
+		"TOTAL",
+		"",
+		totalCommands,
+		totalCompleted,
+		totalFailed,
+		overallSuccessRate)
+}
+
+// calculateSuccessRate calculates success rate percentage
+func (c *Console) calculateSuccessRate(completed, total int) float64 {
+	if total > 0 {
+		return float64(completed) / float64(total) * 100
+	}
+	return 0.0
 }
 
 // Backward compatibility methods for tests

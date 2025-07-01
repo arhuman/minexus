@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
-	pb "minexus/protogen"
+	pb "github.com/arhuman/minexus/protogen"
 )
 
 // SystemInfoCommand provides system information

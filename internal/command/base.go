@@ -1,7 +1,7 @@
 package command
 
 import (
-	pb "minexus/protogen"
+	pb "github.com/arhuman/minexus/protogen"
 )
 
 // BaseCommand provides common functionality for all commands

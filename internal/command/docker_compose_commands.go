@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	pb "minexus/protogen"
+	pb "github.com/arhuman/minexus/protogen"
 )
 
 // DockerComposeRequest represents the JSON structure for docker-compose commands
