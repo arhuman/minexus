@@ -415,11 +415,8 @@ make release
 
 ## Contributing
 
-1. Fork the develop branch
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
+All contributions are welcome!
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed information.
 
 ## License
 
