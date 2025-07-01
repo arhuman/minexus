@@ -1,0 +1,57 @@
+# Multi-stage Dockerfile for Console interactive client
+FROM golang:1.23 AS builder
+
+# Setup the working directory
+WORKDIR /app
+
+# Install dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Add source code
+COPY cmd/ cmd/
+COPY internal/ internal/
+# Copy test certificates
+COPY internal/certs/files/test internal/certs/files
+COPY protogen/ protogen/
+
+# Build the console binary
+RUN CGO_ENABLED=0 GOOS=linux GOFLAGS="-ldflags=-s -ldflags=-w" go build -o console ./cmd/console/
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+ENV TZ=Europe/Zurich
+
+# Add ca-certificates and basic tools needed for interactive console
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    jq \
+    readline-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create user and group
+RUN groupadd dop && \
+    useradd -r --uid 1001 -g dop dop
+
+# Set working directory
+RUN mkdir -p /app
+WORKDIR /app
+
+# Copy the binary from builder
+COPY --from=builder /app/console /app/console
+
+# Create entrypoint script
+RUN echo '#!/bin/sh\n/app/console' > /app/docker-entrypoint.sh && \
+    chmod +x /app/docker-entrypoint.sh
+
+# Set ownership for Kubernetes compatibility
+RUN chgrp -R 0 /app && chmod -R g=u /app
+
+# Switch to non-root user
+USER 1001
+
+# Set up terminal environment for interactive use
+ENV TERM=xterm-256color
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

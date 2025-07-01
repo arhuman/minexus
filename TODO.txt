@@ -1,0 +1,24 @@
+# TODO
+
+* Event notification system / periodic command on minions
+* Network commands
+  - ping
+  - HTTP GET/HEAD/POST/DELETE
+* Docker compose commands (takes a path as parameter)
+  * config (display docker-compose.yml)
+  * ps
+  * down
+  * build
+  * up (-d)
+  * logs <number_of_line> [service]
+  * grep <pattern> [service]
+* SSH key commands
+  * add/check/rotate keys
+* Minion upgrade
+  
+
+When architecture will be frozen:
+
+* Security
+  * TLS encryption/authentication
+  * shell command security sanitization

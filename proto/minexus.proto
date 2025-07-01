@@ -1,0 +1,168 @@
+syntax = "proto3";
+
+package minexus;
+
+option go_package = "minexus/proto;proto";
+
+// -------------------------------------
+// ENUMS
+// -------------------------------------
+
+enum CommandType {
+  SYSTEM = 0;
+  INTERNAL = 1;
+}
+
+// -------------------------------------
+// MESSAGES COMMUNS
+// -------------------------------------
+
+message HostInfo {
+  string id = 1;
+  string hostname = 2;
+  string ip = 3;
+  string os = 4;
+  map<string, string> tags = 5;
+  int64 last_seen = 6;  // Unix timestamp of last registration/communication
+}
+
+message Command {
+  string id = 1;
+  CommandType type = 2;
+  string payload = 3;
+  map<string, string> metadata = 4;
+}
+
+message CommandResult {
+  string command_id = 1;
+  string minion_id = 2;
+  int32 exit_code = 3;
+  string stdout = 4;
+  string stderr = 5;
+  int64 timestamp = 6;
+}
+
+message Ack {
+  bool success = 1;
+}
+
+message Empty {}
+
+
+// -------------------------------------
+// TAG MANAGEMENT & SELECTION
+// -------------------------------------
+
+message SetTagsRequest {
+  string minion_id = 1;
+  map<string, string> tags = 2;
+}
+
+message UpdateTagsRequest {
+  string minion_id = 1;
+  map<string, string> add = 2;
+  repeated string remove_keys = 3;
+}
+
+message TagList {
+  repeated string tags = 1;
+}
+
+message TagMatch {
+  string key = 1;
+  oneof condition {
+    string equals = 2;
+    bool exists = 3;
+    bool not_exists = 4;
+  }
+}
+
+message TagSelector {
+  repeated TagMatch rules = 1; // AND logique
+}
+
+// -------------------------------------
+// CONSOLE ↔ NEXUS SERVICE
+// -------------------------------------
+
+service ConsoleService {
+  rpc ListMinions(Empty) returns (MinionList);
+  rpc ListTags(Empty) returns (TagList);
+
+  rpc SetTags(SetTagsRequest) returns (Ack);
+  rpc UpdateTags(UpdateTagsRequest) returns (Ack);
+
+  rpc SendCommand(CommandRequest) returns (CommandDispatchResponse);
+  rpc GetCommandResults(ResultRequest) returns (CommandResults);
+  rpc GetCommandStatus(ResultRequest) returns (CommandStatusResponse);
+}
+
+message CommandStatusResponse {
+  message MinionStatus {
+    string minion_id = 1;
+    string status = 2;     // "PENDING", "RECEIVED", "EXECUTING", "COMPLETED", "FAILED"
+    int64 timestamp = 3;
+  }
+  
+  string command_id = 1;
+  repeated MinionStatus statuses = 2;
+  map<string, int32> status_counts = 3;  // Count of minions in each status
+}
+
+message MinionList {
+  repeated HostInfo minions = 1;
+}
+
+message CommandRequest {
+  repeated string minion_ids = 1;
+  TagSelector tag_selector = 2;
+  Command command = 3;
+}
+
+message CommandDispatchResponse {
+  bool accepted = 1;
+  string command_id = 2;
+}
+
+message ResultRequest {
+  string command_id = 1;
+}
+
+message CommandResults {
+  repeated CommandResult results = 1;
+}
+
+// -------------------------------------
+// NEXUS ↔ MINION SERVICE
+// -------------------------------------
+
+// New message for command status updates
+message CommandStatusUpdate {
+  string command_id = 1;
+  string minion_id = 2;
+  string status = 3;     // "RECEIVED", "EXECUTING", "COMPLETED", "FAILED"
+  int64 timestamp = 4;
+}
+
+service MinionService {
+  rpc Register(HostInfo) returns (RegisterResponse);
+  rpc StreamCommands(stream CommandStreamMessage) returns (stream CommandStreamMessage);
+}
+
+message RegisterResponse {
+  bool success = 1;
+  string assigned_id = 2;
+  string error_message = 3;
+}
+
+message MinionInfo {
+  string id = 1;
+}
+
+message CommandStreamMessage {
+  oneof message {
+    Command command = 1;           // Nexus -> Minion: New command to execute
+    CommandResult result = 2;      // Minion -> Nexus: Result of executed command
+    CommandStatusUpdate status = 3; // Minion -> Nexus: Status update for command
+  }
+}

@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1.46.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache buf
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/buf
+          key: ${{ runner.os }}-buf-${{ hashFiles('**/buf.yaml', '**/buf.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-buf-
+
+      - name: Install dependencies
+        run: go mod tidy
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Copy test certificates
+        run: |
+          cp -R internal/certs/files/test/* internal/certs/files
+
+      - name: Build all binaries
+        run: make build
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Create test environment file
+        run: |
+          cat > .env << EOF
+          NEXUS_SERVER=nexus_server
+          NEXUS_MINION_PORT=11972
+          NEXUS_CONSOLE_PORT=11973
+          DBHOST=localhost
+          DBPORT=5432
+          DBUSER=postgres
+          DBPASS=postgres
+          DBNAME=minexus
+          DBSSLMODE=disable
+          MAX_MSG_SIZE=10485760
+          FILEROOT=/tmp
+          MINION_ID=docker-minion
+          CONNECT_TIMEOUT=3
+          INITIAL_RECONNECT_DELAY=1
+          MAX_RECONNECT_DELAY=3600
+          HEARTBEAT_INTERVAL=60
+          DEBUG=false
+          EOF
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Start Docker services for integration tests
+        run: |
+          echo "Starting Docker services with healthchecks..."
+          docker compose up -d nexus_server minion
+
+          echo "Waiting for services to be healthy..."
+          timeout 120 bash -c 'until docker compose ps --format json | grep -q "nexus_server.*healthy"; do
+            echo "Waiting for nexus_server to be healthy..."
+            sleep 2
+          done'
+
+          echo "Services are ready!"
+
+      - name: Show running containers
+        run: docker compose ps
+
+      - name: Run integration tests
+        run: make test-integration
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage.out
+            coverage.html

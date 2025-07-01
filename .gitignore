@@ -1,25 +1,31 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Test binary, built with `go test -c`
-*.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
-go.work
-go.work.sum
-
-# env file
+# No secrets leak
 .env
+# No database in git
+pg_data/
+# The binaries
+/console
+/console-test
+/console-linux
+/console-darwin
+/console-windows.exe
+/minion
+/minion-linux
+/minion-darwin
+/minion-windows.exe
+/nexus
+/nexus-linux
+/nexus-darwin
+/nexus-windows.exe
+# Coverage artifacts
+coverage.html
+coverage.out
+# TLS related
+# These files contain certificates, private keys, and related configuration
+# files that should never be committed to version control for security reasons
+/internal/certs/files/*.crt
+/internal/certs/files/*.key
+/internal/certs/files/prod
+*.csr
+*.srl
+*.pem
+internal/certs/files/*.conf

@@ -1,0 +1,57 @@
+# Multi-stage Dockerfile for Nexus server
+FROM golang:1.23 AS builder
+
+# Setup the working directory
+WORKDIR /app
+
+# Install dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Add source code
+COPY cmd/ cmd/
+COPY internal/ internal/
+# Copy test certificates
+COPY internal/certs/files/test internal/certs/files
+COPY protogen/ protogen/
+
+# Build the nexus binary
+RUN CGO_ENABLED=0 GOOS=linux GOFLAGS="-ldflags=-s -ldflags=-w" go build -o nexus ./cmd/nexus/
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+ENV TZ=Europe/Zurich
+
+# Add ca-certificates and basic tools
+RUN apt-get update && apt-get install -y \
+    netcat-traditional \
+    ca-certificates \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create user and group
+RUN groupadd dop && \
+    useradd -r --uid 1001 -g dop dop
+
+# Set working directory
+RUN mkdir -p /app
+WORKDIR /app
+
+# Copy the binary from builder
+COPY --from=builder /app/nexus /app/nexus
+
+# Create entrypoint script
+RUN echo '#!/bin/sh\n/app/nexus' > /app/docker-entrypoint.sh && \
+    chmod +x /app/docker-entrypoint.sh
+
+# Set ownership for Kubernetes compatibility
+RUN chgrp -R 0 /app && chmod -R g=u /app
+
+# Switch to non-root user
+USER 1001
+
+# Expose the default gRPC port
+EXPOSE 11972
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
