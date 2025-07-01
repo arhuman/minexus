@@ -84,27 +84,34 @@ Then to attach a console:
 
 ```
 minexus/
+├── .github/               # GitHub Actions workflows and issue templates
+│   ├── ISSUE_TEMPLATE/    #   Issue templates
+│   └── workflows/         #   CI/CD workflows
 ├── cmd/                   # Application entry points
-│   ├── nexus/             #   Nexus server main
+│   ├── console/           #   Console client main
 │   ├── minion/            #   Minion client main
-│   └── console/           #   Console client main
+│   └── nexus/             #   Nexus server main
+├── config/                # Configuration files
+│   └── docker/            #   Docker configuration
+│       └── initdb/        #     Database initialization scripts
+├── documentation/         # Project documentation
 ├── internal/              # Internal packages
+│   ├── certs/             #   TLS certificate generation and management
 │   ├── command/           #   Command implementations for minions
-│   ├── config/             #   Configuration system
+│   ├── config/            #   Configuration system
 │   ├── logging/           #   Logging infrastructure
 │   ├── minion/            #   Minion client implementation
 │   ├── nexus/             #   Nexus server implementation
 │   └── version/           #   Version handling
 ├── proto/                 # Protocol buffer definitions
 ├── protogen/              # Generated protobuf code
-├── config/                 # Configuration files
-│   └── docker/            #   Docker configuration
-│       └── initdb/        #     Database initialization scripts
-├── documentation/         # Project documentation
-├── Makefile                # Build and development tasks
+├── CODE_OF_CONDUCT.md     # Code of Conduct for contributors
+├── Dockerfile.*           # Dockerfiles for different components
+├── LICENSE                # Project license information
+├── Makefile               # Build and development tasks
+├── README.md              # Project overview and documentation
 ├── docker-compose.yml     # Docker Compose configuration
-├── Dockerfile.*            # Container build files
-└── go.mod                 # Go module definition
+└── env.sample             # Sample environment file
 ```
 
 ## Configuration
