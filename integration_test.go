@@ -21,7 +21,7 @@ import (
 )
 
 // Debug configuration
-var debugMode = os.Getenv("DEBUG_TESTS") != ""
+var debugMode = os.Getenv("DEBUG") != ""
 
 // Debug logging helper
 func logDebug(t *testing.T, format string, args ...interface{}) {

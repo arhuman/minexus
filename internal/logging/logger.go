@@ -11,11 +11,11 @@ import (
 // to measure elapsed time for the function execution
 func FuncLogger(logger *zap.Logger, funcName string) (*zap.Logger, time.Time) {
 	logger = logger.With(zap.String("location", funcName))
-	logger.Debug(funcName+" started", zap.Time("start_time", time.Now()))
+	logger.Info(funcName+" started", zap.Time("start_time", time.Now()))
 	return logger, time.Now()
 }
 
 // FuncExit logs the exit point of a function with elapsed time at debug level
 func FuncExit(logger *zap.Logger, start time.Time) {
-	logger.With(zap.Duration("elapsed", time.Since(start))).Debug("function exited")
+	logger.With(zap.Duration("elapsed", time.Since(start))).Info("function exited")
 }
