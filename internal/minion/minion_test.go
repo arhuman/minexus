@@ -770,7 +770,7 @@ func TestRegistrationManagerConcurrentIDAccess(t *testing.T) {
 			return &pb.RegisterResponse{Success: true, AssignedId: in.Id}, nil
 		},
 	}
-	
+
 	reconnectMgr := NewReconnectionManager(time.Millisecond, time.Second, logger)
 	connMgr := NewConnectionManager("test-minion", mockClient, reconnectMgr, logger)
 	regMgr := NewRegistrationManager("test-minion", mockClient, connMgr, logger)
@@ -778,13 +778,13 @@ func TestRegistrationManagerConcurrentIDAccess(t *testing.T) {
 	// Run concurrent operations that would trigger the race condition
 	const numGoroutines = 10
 	const operationsPerGoroutine = 100
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	// Channel to collect any errors
 	errChan := make(chan error, numGoroutines*2)
-	
+
 	// Start goroutines doing Register (which may write to ID)
 	for i := 0; i < numGoroutines; i++ {
 		go func(id int) {
@@ -798,7 +798,7 @@ func TestRegistrationManagerConcurrentIDAccess(t *testing.T) {
 			errChan <- nil
 		}(i)
 	}
-	
+
 	// Start goroutines doing GetMinionID (which reads the ID)
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
@@ -808,7 +808,7 @@ func TestRegistrationManagerConcurrentIDAccess(t *testing.T) {
 			errChan <- nil
 		}()
 	}
-	
+
 	// Wait for all goroutines to complete
 	for i := 0; i < numGoroutines*2; i++ {
 		select {
@@ -837,22 +837,22 @@ func TestRegistrationManagerConcurrentPeriodicRegister(t *testing.T) {
 			return &pb.RegisterResponse{Success: true, AssignedId: in.Id}, nil
 		},
 	}
-	
+
 	reconnectMgr := NewReconnectionManager(time.Millisecond, time.Second, logger)
 	connMgr := NewConnectionManager("race-test", mockClient, reconnectMgr, logger)
 	regMgr := NewRegistrationManager("race-test", mockClient, connMgr, logger)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	
+
 	errChan := make(chan error, 2)
-	
+
 	// Goroutine 1: Call Register which may update ID
 	go func() {
 		_, err := regMgr.Register(ctx, nil)
 		errChan <- err
 	}()
-	
+
 	// Goroutine 2: Call PeriodicRegister which reads ID for logging and host info
 	go func() {
 		// Use a short interval to increase race probability
@@ -863,7 +863,7 @@ func TestRegistrationManagerConcurrentPeriodicRegister(t *testing.T) {
 			errChan <- nil
 		}
 	}()
-	
+
 	// Wait for both goroutines
 	for i := 0; i < 2; i++ {
 		select {
@@ -886,18 +886,18 @@ func TestConnectionManagerConcurrentConnectionState(t *testing.T) {
 			return &mockStreamCommandsClient{}, nil
 		},
 	}
-	
+
 	reconnectMgr := NewReconnectionManager(time.Millisecond, time.Second, logger)
 	connMgr := NewConnectionManager("test-connection", mockClient, reconnectMgr, logger)
 
 	const numGoroutines = 20
 	const operationsPerGoroutine = 50
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	errChan := make(chan error, numGoroutines*3)
-	
+
 	// Goroutines calling Connect (which sets connected = true)
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
@@ -907,8 +907,8 @@ func TestConnectionManagerConcurrentConnectionState(t *testing.T) {
 			errChan <- nil
 		}()
 	}
-	
-	// Goroutines calling Disconnect (which sets connected = false)  
+
+	// Goroutines calling Disconnect (which sets connected = false)
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			for j := 0; j < operationsPerGoroutine; j++ {
@@ -917,7 +917,7 @@ func TestConnectionManagerConcurrentConnectionState(t *testing.T) {
 			errChan <- nil
 		}()
 	}
-	
+
 	// Goroutines calling IsConnected (which reads connected field)
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
@@ -927,7 +927,7 @@ func TestConnectionManagerConcurrentConnectionState(t *testing.T) {
 			errChan <- nil
 		}()
 	}
-	
+
 	// Wait for all goroutines to complete
 	for i := 0; i < numGoroutines*3; i++ {
 		select {
@@ -955,15 +955,15 @@ func TestConnectionManagerConcurrentReconnection(t *testing.T) {
 			return &mockStreamCommandsClient{}, nil
 		},
 	}
-	
+
 	reconnectMgr := NewReconnectionManager(time.Millisecond, 100*time.Millisecond, logger)
 	connMgr := NewConnectionManager("test-reconnect", mockClient, reconnectMgr, logger)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	
+
 	errChan := make(chan error, 3)
-	
+
 	// Goroutine 1: HandleReconnection (which modifies connection state)
 	go func() {
 		err := connMgr.HandleReconnection(ctx)
@@ -973,7 +973,7 @@ func TestConnectionManagerConcurrentReconnection(t *testing.T) {
 			errChan <- nil
 		}
 	}()
-	
+
 	// Goroutine 2: IsConnected calls (which read connection state)
 	go func() {
 		for {
@@ -987,7 +987,7 @@ func TestConnectionManagerConcurrentReconnection(t *testing.T) {
 			}
 		}
 	}()
-	
+
 	// Goroutine 3: Disconnect calls (which modify connection state)
 	go func() {
 		for {
@@ -1001,7 +1001,7 @@ func TestConnectionManagerConcurrentReconnection(t *testing.T) {
 			}
 		}
 	}()
-	
+
 	// Wait for completion or timeout
 	for i := 0; i < 3; i++ {
 		select {
@@ -1020,7 +1020,7 @@ func TestConnectionManagerConcurrentReconnection(t *testing.T) {
 func TestMinionRaceConditionIntegration(t *testing.T) {
 	logger := zap.NewNop()
 	atom := zap.NewAtomicLevelAt(zap.InfoLevel)
-	
+
 	registerCount := 0
 	mockClient := &mockMinionServiceClient{
 		registerFunc: func(ctx context.Context, in *pb.HostInfo, opts ...grpc.CallOption) (*pb.RegisterResponse, error) {
@@ -1035,7 +1035,7 @@ func TestMinionRaceConditionIntegration(t *testing.T) {
 			return &mockStreamCommandsClient{closed: true}, nil // Simulate immediate close to trigger reconnection
 		},
 	}
-	
+
 	// Create minion with short intervals to increase race probability
 	minion := NewMinion("race-minion", mockClient, 10*time.Millisecond, // short heartbeat
 		time.Millisecond, 100*time.Millisecond, // short reconnect delays
@@ -1043,18 +1043,18 @@ func TestMinionRaceConditionIntegration(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	
+
 	// Start the minion (this starts both run() and periodicRegistration() goroutines)
 	err := minion.Start(ctx)
 	if err != nil {
 		t.Fatalf("Failed to start minion: %v", err)
 	}
-	
+
 	// Let it run for a bit to trigger potential race conditions
 	time.Sleep(500 * time.Millisecond)
-	
+
 	// Stop the minion
 	minion.Stop()
-	
+
 	// If we get here without panicking or race detector errors, the test passes
 }

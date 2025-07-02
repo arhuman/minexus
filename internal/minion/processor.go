@@ -169,159 +169,250 @@ func (cp *commandProcessor) ProcessCommands(ctx context.Context, stream pb.Minio
 		loopStart := time.Now()
 		logger.Debug("Waiting for next command on stream")
 
-		// Use a goroutine to make stream.Recv() interruptible
-		type recvResult struct {
-			msg *pb.CommandStreamMessage
-			err error
+		// Receive message from stream
+		msg, err := cp.receiveMessageFromStream(ctx, stream, logger)
+		if err != nil {
+			return cp.handleStreamError(ctx, err, logger)
 		}
 
-		recvCh := make(chan recvResult, 1)
-		go func() {
-			recvFuncName := "commandProcessor.streamReceiver"
-			recvLogger, recvStart := logging.FuncLogger(cp.logger, recvFuncName)
-			defer logging.FuncExit(recvLogger, recvStart)
-
-			recvLogger.Debug("About to call stream.Recv()")
-			msg, err := stream.Recv()
-
-			if err != nil {
-				recvLogger.Debug("stream.Recv() returned with error", zap.Error(err))
-			} else if msg != nil && msg.GetCommand() != nil {
-				cmd := msg.GetCommand()
-				recvLogger.Debug("Received command details",
-					zap.String("command_id", cmd.Id),
-					zap.String("payload", cmd.Payload),
-					zap.String("type", cmd.Type.String()))
-			}
-			recvCh <- recvResult{msg: msg, err: err}
-		}()
-
-		// Wait for command with timeout and cancellation support
-		var msg *pb.CommandStreamMessage
-		var err error
-
-		select {
-		case <-ctx.Done():
-			logger.Debug("Context cancelled, stopping command loop")
-			return ctx.Err()
-		case result := <-recvCh:
-			msg = result.msg
-			err = result.err
-		case <-time.After(cp.streamTimeout):
-			logger.Debug("stream.Recv() timeout, checking stream health",
-				zap.Duration("timeout", cp.streamTimeout))
-			select {
-			case <-ctx.Done():
-				logger.Debug("Context cancelled during health check")
-				return ctx.Err()
-			default:
-				logger.Debug("Stream timeout but context still active, continuing...")
+		// Process the received message
+		if err := cp.processReceivedMessage(ctx, msg, stream, logger, loopStart); err != nil {
+			if err == errSkipMessage {
 				continue
 			}
-		}
-
-		if err != nil {
-			// Buffer any pending results before stream disconnection
-			cp.logPendingBufferState()
-
-			// Enhanced gRPC error logging for diagnosis
-			if grpcErr, ok := err.(interface{ GRPCStatus() *status.Status }); ok {
-				grpcStatus := grpcErr.GRPCStatus()
-				logger.Error("HARDENING: gRPC stream error - results may be buffered",
-					zap.String("error_type", fmt.Sprintf("%T", err)),
-					zap.String("grpc_code", grpcStatus.Code().String()),
-					zap.String("grpc_message", grpcStatus.Message()),
-					zap.Any("grpc_details", grpcStatus.Details()),
-					zap.String("minion_id", cp.id),
-					zap.Error(err))
-			} else {
-				logger.Error("HARDENING: Non-gRPC stream error - results may be buffered",
-					zap.String("error_type", fmt.Sprintf("%T", err)),
-					zap.String("minion_id", cp.id),
-					zap.Error(err))
-			}
-
-			if ctx.Err() != nil {
-				logger.Debug("Context cancelled, stopping command loop")
-				return ctx.Err()
-			}
-			logger.Warn("HARDENING: Stream error will cause reconnection attempt",
-				zap.String("minion_id", cp.id),
-				zap.Error(err))
 			return err
 		}
+	}
+}
 
-		logger.Debug("Processing received message",
+// errSkipMessage is used to signal that a message should be skipped
+var errSkipMessage = fmt.Errorf("skip message")
+
+// recvResult represents the result of a stream receive operation
+type recvResult struct {
+	msg *pb.CommandStreamMessage
+	err error
+}
+
+// receiveMessageFromStream receives a message from the stream with timeout and cancellation support
+func (cp *commandProcessor) receiveMessageFromStream(ctx context.Context, stream pb.MinionService_StreamCommandsClient, logger *zap.Logger) (*pb.CommandStreamMessage, error) {
+	recvCh := make(chan recvResult, 1)
+
+	go func() {
+		msg, err := cp.performStreamReceive(stream)
+		recvCh <- recvResult{msg: msg, err: err}
+	}()
+
+	return cp.waitForStreamResult(ctx, recvCh, logger)
+}
+
+// performStreamReceive performs the actual stream receive operation
+func (cp *commandProcessor) performStreamReceive(stream pb.MinionService_StreamCommandsClient) (*pb.CommandStreamMessage, error) {
+	recvFuncName := "commandProcessor.streamReceiver"
+	recvLogger, recvStart := logging.FuncLogger(cp.logger, recvFuncName)
+	defer logging.FuncExit(recvLogger, recvStart)
+
+	recvLogger.Debug("About to call stream.Recv()")
+	msg, err := stream.Recv()
+
+	cp.logStreamReceiveResult(recvLogger, msg, err)
+	return msg, err
+}
+
+// logStreamReceiveResult logs the result of stream receive operation
+func (cp *commandProcessor) logStreamReceiveResult(logger *zap.Logger, msg *pb.CommandStreamMessage, err error) {
+	if err != nil {
+		logger.Debug("stream.Recv() returned with error", zap.Error(err))
+	} else if msg != nil && msg.GetCommand() != nil {
+		cmd := msg.GetCommand()
+		logger.Debug("Received command details",
+			zap.String("command_id", cmd.Id),
+			zap.String("payload", cmd.Payload),
+			zap.String("type", cmd.Type.String()))
+	}
+}
+
+// waitForStreamResult waits for stream result with timeout and cancellation support
+func (cp *commandProcessor) waitForStreamResult(ctx context.Context, recvCh chan recvResult, logger *zap.Logger) (*pb.CommandStreamMessage, error) {
+	select {
+	case <-ctx.Done():
+		logger.Debug("Context cancelled, stopping command loop")
+		return nil, ctx.Err()
+	case result := <-recvCh:
+		return result.msg, result.err
+	case <-time.After(cp.streamTimeout):
+		return cp.handleStreamTimeout(ctx, logger)
+	}
+}
+
+// handleStreamTimeout handles stream timeout scenarios
+func (cp *commandProcessor) handleStreamTimeout(ctx context.Context, logger *zap.Logger) (*pb.CommandStreamMessage, error) {
+	logger.Debug("stream.Recv() timeout, checking stream health",
+		zap.Duration("timeout", cp.streamTimeout))
+
+	select {
+	case <-ctx.Done():
+		logger.Debug("Context cancelled during health check")
+		return nil, ctx.Err()
+	default:
+		logger.Debug("Stream timeout but context still active, continuing...")
+		return nil, errSkipMessage
+	}
+}
+
+// handleStreamError handles stream errors with appropriate logging and context checking
+func (cp *commandProcessor) handleStreamError(ctx context.Context, err error, logger *zap.Logger) error {
+	if err == errSkipMessage {
+		return nil
+	}
+
+	// Buffer any pending results before stream disconnection
+	cp.logPendingBufferState()
+
+	// Enhanced error logging
+	cp.logStreamError(err, logger)
+
+	// Check context cancellation
+	if ctx.Err() != nil {
+		logger.Debug("Context cancelled, stopping command loop")
+		return ctx.Err()
+	}
+
+	logger.Warn("HARDENING: Stream error will cause reconnection attempt",
+		zap.String("minion_id", cp.id),
+		zap.Error(err))
+	return err
+}
+
+// logStreamError logs stream errors with appropriate detail level
+func (cp *commandProcessor) logStreamError(err error, logger *zap.Logger) {
+	if grpcErr, ok := err.(interface{ GRPCStatus() *status.Status }); ok {
+		cp.logGRPCStreamError(grpcErr, err, logger)
+	} else {
+		cp.logNonGRPCStreamError(err, logger)
+	}
+}
+
+// logGRPCStreamError logs gRPC-specific stream errors
+func (cp *commandProcessor) logGRPCStreamError(grpcErr interface{ GRPCStatus() *status.Status }, err error, logger *zap.Logger) {
+	grpcStatus := grpcErr.GRPCStatus()
+	logger.Error("HARDENING: gRPC stream error - results may be buffered",
+		zap.String("error_type", fmt.Sprintf("%T", err)),
+		zap.String("grpc_code", grpcStatus.Code().String()),
+		zap.String("grpc_message", grpcStatus.Message()),
+		zap.Any("grpc_details", grpcStatus.Details()),
+		zap.String("minion_id", cp.id),
+		zap.Error(err))
+}
+
+// logNonGRPCStreamError logs non-gRPC stream errors
+func (cp *commandProcessor) logNonGRPCStreamError(err error, logger *zap.Logger) {
+	logger.Error("HARDENING: Non-gRPC stream error - results may be buffered",
+		zap.String("error_type", fmt.Sprintf("%T", err)),
+		zap.String("minion_id", cp.id),
+		zap.Error(err))
+}
+
+// processReceivedMessage processes a received message from the stream
+func (cp *commandProcessor) processReceivedMessage(ctx context.Context, msg *pb.CommandStreamMessage, stream pb.MinionService_StreamCommandsClient, logger *zap.Logger, loopStart time.Time) error {
+	logger.Debug("Processing received message",
+		zap.Any("message_type", fmt.Sprintf("%T", msg.Message)),
+		zap.Bool("has_command", msg.GetCommand() != nil),
+		zap.Bool("has_result", msg.GetResult() != nil),
+		zap.Bool("has_status", msg.GetStatus() != nil))
+
+	command := msg.GetCommand()
+	if command == nil {
+		logger.Warn("Received non-command message, skipping",
 			zap.Any("message_type", fmt.Sprintf("%T", msg.Message)),
-			zap.Bool("has_command", msg.GetCommand() != nil),
-			zap.Bool("has_result", msg.GetResult() != nil),
-			zap.Bool("has_status", msg.GetStatus() != nil))
+			zap.String("message_content", fmt.Sprintf("%+v", msg)))
+		return errSkipMessage
+	}
 
-		command := msg.GetCommand()
-		if command == nil {
-			logger.Warn("Received non-command message, skipping",
-				zap.Any("message_type", fmt.Sprintf("%T", msg.Message)),
-				zap.String("message_content", fmt.Sprintf("%+v", msg)))
-			continue
+	// Extract and store sequence number
+	seqNum := cp.extractAndStoreSequenceNumber(command)
+
+	logger.Debug("Processing command",
+		zap.String("command_id", command.Id),
+		zap.String("payload", command.Payload),
+		zap.String("command_type", command.Type.String()),
+		zap.String("seq_num", seqNum))
+
+	// Execute the command workflow
+	return cp.executeCommandWorkflow(ctx, command, stream, logger, loopStart)
+}
+
+// extractAndStoreSequenceNumber extracts and stores the sequence number from command metadata
+func (cp *commandProcessor) extractAndStoreSequenceNumber(command *pb.Command) string {
+	seqNum := "unknown"
+	if command.Metadata != nil {
+		if seq, ok := command.Metadata["seq_num"]; ok {
+			seqNum = seq
+			cp.commandSeqMutex.Lock()
+			cp.commandSeqNums[command.Id] = seq
+			cp.commandSeqMutex.Unlock()
 		}
+	}
+	return seqNum
+}
 
-		// Extract sequence number from metadata
-		seqNum := "unknown"
-		if command.Metadata != nil {
-			if seq, ok := command.Metadata["seq_num"]; ok {
-				seqNum = seq
-				cp.commandSeqMutex.Lock()
-				cp.commandSeqNums[command.Id] = seq
-				cp.commandSeqMutex.Unlock()
-			}
-		}
+// executeCommandWorkflow executes the complete command workflow
+func (cp *commandProcessor) executeCommandWorkflow(ctx context.Context, command *pb.Command, stream pb.MinionService_StreamCommandsClient, logger *zap.Logger, loopStart time.Time) error {
+	// Send status updates
+	cp.sendStatusUpdates(stream, command.Id, logger)
 
-		logger.Debug("Processing command",
-			zap.String("command_id", command.Id),
-			zap.String("payload", command.Payload),
-			zap.String("command_type", command.Type.String()),
-			zap.String("seq_num", seqNum))
+	// Execute command
+	result, err := cp.Execute(ctx, command)
+	if err != nil {
+		cp.handleCommandExecutionError(command.Id, err, result, logger)
+	}
 
-		// Send status updates through stream
-		if err := cp.sendStatusUpdateWithBuffer(stream, command.Id, "RECEIVED"); err != nil {
-			logger.Warn("HARDENING: Failed to send RECEIVED status - buffered for retry, continuing processing", zap.Error(err))
-			// Don't return error - continue processing while status is buffered
-		}
+	// Send result and final status
+	cp.sendCommandResultHelper(stream, result, logger)
+	cp.sendFinalStatus(stream, command.Id, result, logger)
 
-		if err := cp.sendStatusUpdateWithBuffer(stream, command.Id, "EXECUTING"); err != nil {
-			logger.Warn("HARDENING: Failed to send EXECUTING status - buffered for retry, continuing processing", zap.Error(err))
-			// Don't return error - continue processing while status is buffered
-		}
+	logger.Debug("Command processing completed",
+		zap.Duration("iteration_time", time.Since(loopStart)),
+		zap.String("command_id", command.Id))
 
-		// Execute command
-		result, err := cp.Execute(ctx, command)
-		if err != nil {
-			logger.Error("Error executing command",
-				zap.String("command_id", command.Id),
-				zap.Error(err))
-			result.ExitCode = 1
-			result.Stderr = err.Error()
-		}
+	return nil
+}
 
-		// Send command result through stream with buffering
-		if err := cp.sendCommandResultWithBuffer(stream, result); err != nil {
-			logger.Warn("HARDENING: Failed to send command result - buffered for retry, continuing processing", zap.Error(err))
-			// Don't return error - continue processing while result is buffered
-		}
+// sendStatusUpdates sends the initial status updates for a command
+func (cp *commandProcessor) sendStatusUpdates(stream pb.MinionService_StreamCommandsClient, commandID string, logger *zap.Logger) {
+	if err := cp.sendStatusUpdateWithBuffer(stream, commandID, "RECEIVED"); err != nil {
+		logger.Warn("HARDENING: Failed to send RECEIVED status - buffered for retry, continuing processing", zap.Error(err))
+	}
 
-		// Send final status
-		status := "COMPLETED"
-		if result.ExitCode != 0 {
-			status = "FAILED"
-		}
-		if err := cp.sendStatusUpdateWithBuffer(stream, command.Id, status); err != nil {
-			logger.Warn("HARDENING: Failed to send final status - buffered for retry, continuing processing", zap.Error(err))
-			// Don't return error - continue processing while status is buffered
-		}
+	if err := cp.sendStatusUpdateWithBuffer(stream, commandID, "EXECUTING"); err != nil {
+		logger.Warn("HARDENING: Failed to send EXECUTING status - buffered for retry, continuing processing", zap.Error(err))
+	}
+}
 
-		logger.Debug("Command processing completed",
-			zap.Duration("iteration_time", time.Since(loopStart)),
-			zap.String("command_id", command.Id))
+// handleCommandExecutionError handles errors from command execution
+func (cp *commandProcessor) handleCommandExecutionError(commandID string, err error, result *pb.CommandResult, logger *zap.Logger) {
+	logger.Error("Error executing command",
+		zap.String("command_id", commandID),
+		zap.Error(err))
+	result.ExitCode = 1
+	result.Stderr = err.Error()
+}
+
+// sendCommandResultHelper sends the command result through the stream
+func (cp *commandProcessor) sendCommandResultHelper(stream pb.MinionService_StreamCommandsClient, result *pb.CommandResult, logger *zap.Logger) {
+	if err := cp.sendCommandResultWithBuffer(stream, result); err != nil {
+		logger.Warn("HARDENING: Failed to send command result - buffered for retry, continuing processing", zap.Error(err))
+	}
+}
+
+// sendFinalStatus sends the final status update for a command
+func (cp *commandProcessor) sendFinalStatus(stream pb.MinionService_StreamCommandsClient, commandID string, result *pb.CommandResult, logger *zap.Logger) {
+	status := "COMPLETED"
+	if result.ExitCode != 0 {
+		status = "FAILED"
+	}
+	if err := cp.sendStatusUpdateWithBuffer(stream, commandID, status); err != nil {
+		logger.Warn("HARDENING: Failed to send final status - buffered for retry, continuing processing", zap.Error(err))
 	}
 }
 

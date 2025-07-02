@@ -50,7 +50,7 @@ func setupLogger(debug bool) (*zap.Logger, zap.AtomicLevel, error) {
 func setupGRPCConnection(cfg *config.MinionConfig, logger *zap.Logger) (*grpc.ClientConn, error) {
 	logger, start := logging.FuncLogger(logger, "setupGRPCConnection")
 	defer logging.FuncExit(logger, start)
-	
+
 	// Configure TLS credentials (mandatory, embedded)
 	logger.Info("Configuring embedded TLS for minion client")
 

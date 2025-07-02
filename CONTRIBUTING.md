@@ -87,7 +87,9 @@ git checkout -b feature/your-feature-name
 2. **Write or update tests** for your changes
 3. **Update documentation** as needed
 4. **Run the full test suite** (`SLOW_TESTS=1 make test`) to ensure nothing is broken
-5. **Format and lint your code** using provided tools
+5. **Run full audit (race conditions, security...)** (`make audit`) to really ensure nothing is broken
+6. **Check that your code isn't overly complex (OPTIONAL)** (`go run github.com/fzipp/gocyclo/cmd/gocyclo@latest .`)
+7. **Format and lint your code** using provided tools
 
 ## Pull Request Process
 

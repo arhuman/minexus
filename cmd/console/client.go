@@ -30,7 +30,7 @@ type GRPCClient struct {
 func NewGRPCClient(cfg *config.ConsoleConfig, logger *zap.Logger) (*GRPCClient, error) {
 	logger, start := logging.FuncLogger(logger, "NewGRPCClient")
 	defer logging.FuncExit(logger, start)
-	
+
 	// Connect to Nexus server
 	logger.Info("Connecting to Nexus server", zap.String("address", cfg.ServerAddr))
 
