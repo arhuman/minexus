@@ -23,7 +23,7 @@ type connectionManager struct {
 	stream       pb.MinionService_StreamCommandsClient
 	connected    bool
 	connecting   bool
-	connectMutex sync.Mutex
+	stateMutex   sync.Mutex // protects connected, connecting, and stream fields
 }
 
 // NewConnectionManager creates a new connection manager
@@ -47,47 +47,54 @@ func (cm *connectionManager) Connect(ctx context.Context) error {
 	defer logging.FuncExit(logger, start)
 	
 	// RACE CONDITION DIAGNOSIS: Check for concurrent connection attempts
-	cm.connectMutex.Lock()
+	cm.stateMutex.Lock()
 	if cm.connecting {
-		cm.connectMutex.Unlock()
+		// Read values while holding the lock to avoid race conditions
+		connected := cm.connected
+		connecting := cm.connecting
+		cm.stateMutex.Unlock()
 		logger.Warn("RACE CONDITION DETECTED: Connect() called while already connecting",
 			zap.String("minion_id", cm.id),
-			zap.Bool("connected", cm.connected),
-			zap.Bool("connecting", cm.connecting))
+			zap.Bool("connected", connected),
+			zap.Bool("connecting", connecting))
 		return fmt.Errorf("connection attempt already in progress")
 	}
 	cm.connecting = true
-	cm.connectMutex.Unlock()
+	cm.stateMutex.Unlock()
 
 	// Clean up connecting flag on exit
 	defer func() {
-		cm.connectMutex.Lock()
+		cm.stateMutex.Lock()
 		cm.connecting = false
-		cm.connectMutex.Unlock()
+		cm.stateMutex.Unlock()
 	}()
 
 	logger.Debug("Attempting to get command stream",
 		zap.String("minion_id", cm.id),
-		zap.Bool("was_connected", cm.connected))
+		zap.Bool("was_connected", cm.getConnectedState()))
 	ctxWithMetadata := metadata.AppendToOutgoingContext(ctx, "minion-id", cm.id)
 
 	// RACE CONDITION DIAGNOSIS: Log each StreamCommands call attempt
 	logger.Info("RACE CONDITION DIAGNOSIS: About to call StreamCommands",
 		zap.String("minion_id", cm.id),
 		zap.Time("timestamp", time.Now()),
-		zap.Bool("was_connected", cm.connected))
+		zap.Bool("was_connected", cm.getConnectedState()))
 
 	stream, err := cm.service.StreamCommands(ctxWithMetadata)
 	if err != nil {
 		logger.Error("Error getting command stream",
 			zap.Error(err),
 			zap.String("error_type", fmt.Sprintf("%T", err)))
+		cm.stateMutex.Lock()
 		cm.connected = false
+		cm.stateMutex.Unlock()
 		return err
 	}
 
+	cm.stateMutex.Lock()
 	cm.stream = stream
 	cm.connected = true
+	cm.stateMutex.Unlock()
 	logger.Info("Successfully obtained command stream",
 		zap.String("minion_id", cm.id),
 		zap.String("stream_ptr", fmt.Sprintf("%p", stream)))
@@ -99,6 +106,9 @@ func (cm *connectionManager) Connect(ctx context.Context) error {
 func (cm *connectionManager) Disconnect() error {
 	logger, start := logging.FuncLogger(cm.logger, "connectionManager.Disconnect")
 	defer logging.FuncExit(logger, start)
+	
+	cm.stateMutex.Lock()
+	defer cm.stateMutex.Unlock()
 	
 	if cm.stream != nil {
 		logger.Info("Closing command stream",
@@ -121,6 +131,8 @@ func (cm *connectionManager) Disconnect() error {
 
 // IsConnected returns true if the minion is currently connected to the nexus server
 func (cm *connectionManager) IsConnected() bool {
+	cm.stateMutex.Lock()
+	defer cm.stateMutex.Unlock()
 	return cm.connected && cm.stream != nil
 }
 
@@ -138,28 +150,31 @@ func (cm *connectionManager) HandleReconnection(ctx context.Context) error {
 	defer logging.FuncExit(logger, start)
 	
 	// RACE CONDITION DIAGNOSIS: Check for concurrent connection attempts
-	cm.connectMutex.Lock()
+	cm.stateMutex.Lock()
 	if cm.connecting {
-		cm.connectMutex.Unlock()
+		// Read values while holding the lock to avoid race conditions
+		connected := cm.connected
+		connecting := cm.connecting
+		cm.stateMutex.Unlock()
 		logger.Warn("RACE CONDITION DETECTED: HandleReconnection() called while already connecting",
 			zap.String("minion_id", cm.id),
-			zap.Bool("connected", cm.connected),
-			zap.Bool("connecting", cm.connecting))
+			zap.Bool("connected", connected),
+			zap.Bool("connecting", connecting))
 		return fmt.Errorf("connection attempt already in progress")
 	}
 	cm.connecting = true
-	cm.connectMutex.Unlock()
+	cm.stateMutex.Unlock()
 
 	// Clean up connecting flag on exit
 	defer func() {
-		cm.connectMutex.Lock()
+		cm.stateMutex.Lock()
 		cm.connecting = false
-		cm.connectMutex.Unlock()
+		cm.stateMutex.Unlock()
 	}()
 
 	logger.Info("Stream connection lost, attempting to reconnect",
 		zap.String("minion_id", cm.id),
-		zap.Bool("was_connected", cm.connected))
+		zap.Bool("was_connected", cm.getConnectedState()))
 
 	// Check for cancellation before reconnecting
 	select {
@@ -190,13 +205,17 @@ func (cm *connectionManager) HandleReconnection(ctx context.Context) error {
 			zap.Error(err),
 			zap.String("error_type", fmt.Sprintf("%T", err)),
 			zap.String("minion_id", cm.id))
+		cm.stateMutex.Lock()
 		cm.stream = nil
 		cm.connected = false
+		cm.stateMutex.Unlock()
 		return err
 	}
 
+	cm.stateMutex.Lock()
 	cm.stream = stream
 	cm.connected = true
+	cm.stateMutex.Unlock()
 	logger.Info("Successfully reconnected to command stream",
 		zap.String("minion_id", cm.id),
 		zap.String("new_stream_ptr", fmt.Sprintf("%p", stream)))
@@ -207,4 +226,11 @@ func (cm *connectionManager) HandleReconnection(ctx context.Context) error {
 // UpdateMinionID updates the minion ID used for connections
 func (cm *connectionManager) UpdateMinionID(newID string) {
 	cm.id = newID
+}
+
+// getConnectedState safely returns the current connection state for logging
+func (cm *connectionManager) getConnectedState() bool {
+	cm.stateMutex.Lock()
+	defer cm.stateMutex.Unlock()
+	return cm.connected
 }
