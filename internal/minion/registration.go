@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	pb "github.com/arhuman/minexus/protogen"
@@ -17,6 +18,7 @@ import (
 
 // registrationManager implements the RegistrationManager interface
 type registrationManager struct {
+	mu            sync.RWMutex
 	id            string
 	service       pb.MinionServiceClient
 	connectionMgr ConnectionManager
@@ -68,9 +70,9 @@ func (rm *registrationManager) Register(ctx context.Context, hostInfo *pb.HostIn
 	logger.Debug("Registration successful")
 
 	// If server assigned a new ID, update it
-	if resp.AssignedId != "" && resp.AssignedId != rm.id {
-		rm.id = resp.AssignedId
-		logger.Info("Using server-assigned ID", zap.String("id", rm.id))
+	if resp.AssignedId != "" && resp.AssignedId != rm.getID() {
+		rm.setID(resp.AssignedId)
+		logger.Info("Using server-assigned ID", zap.String("id", rm.getID()))
 	}
 
 	return resp, nil
@@ -86,7 +88,7 @@ func (rm *registrationManager) PeriodicRegister(ctx context.Context, interval ti
 
 	logger.Debug("Starting periodic registration",
 		zap.Duration("interval", interval),
-		zap.String("minion_id", rm.id))
+		zap.String("minion_id", rm.getID()))
 
 	for {
 		select {
@@ -102,7 +104,7 @@ func (rm *registrationManager) PeriodicRegister(ctx context.Context, interval ti
 			}
 
 			logger.Debug("Performing periodic registration",
-				zap.String("minion_id", rm.id))
+				zap.String("minion_id", rm.getID()))
 
 			// Attempt to register
 			resp, err := rm.service.Register(ctx, hostInfo)
@@ -118,7 +120,7 @@ func (rm *registrationManager) PeriodicRegister(ctx context.Context, interval ti
 			}
 
 			logger.Debug("Periodic registration successful",
-				zap.String("minion_id", rm.id))
+				zap.String("minion_id", rm.getID()))
 		}
 	}
 }
@@ -127,7 +129,7 @@ func (rm *registrationManager) PeriodicRegister(ctx context.Context, interval ti
 func (rm *registrationManager) createHostInfo() (*pb.HostInfo, error) {
 
 	return &pb.HostInfo{
-		Id:       rm.id,
+		Id:       rm.getID(),
 		Hostname: getHostname(),
 		Ip:       rm.getIPAddress(),
 		Os:       runtime.GOOS,
@@ -137,12 +139,12 @@ func (rm *registrationManager) createHostInfo() (*pb.HostInfo, error) {
 
 // GetMinionID returns the current minion ID
 func (rm *registrationManager) GetMinionID() string {
-	return rm.id
+	return rm.getID()
 }
 
 // UpdateMinionID updates the minion ID used for registration
 func (rm *registrationManager) UpdateMinionID(newID string) {
-	rm.id = newID
+	rm.setID(newID)
 }
 
 // Helper functions
@@ -200,4 +202,18 @@ func (rm *registrationManager) getIPAddress() string {
 
 	logger.Warn("No suitable network interface found")
 	return "unknown"
+}
+
+// getID safely returns the current minion ID
+func (rm *registrationManager) getID() string {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+	return rm.id
+}
+
+// setID safely sets the minion ID
+func (rm *registrationManager) setID(newID string) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+	rm.id = newID
 }
