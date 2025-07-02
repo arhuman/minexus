@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/arhuman/minexus/internal/command"
+	"github.com/arhuman/minexus/internal/logging"
 )
 
 // Minion represents a worker node that executes tasks
@@ -34,6 +35,9 @@ type Minion struct {
 
 // NewMinion creates a new minion instance
 func NewMinion(id string, service pb.MinionServiceClient, heartbeatInterval time.Duration, initialReconnectDelay, maxReconnectDelay time.Duration, shellTimeout time.Duration, streamTimeout time.Duration, logger *zap.Logger, atom zap.AtomicLevel) *Minion {
+	logger, start := logging.FuncLogger(logger, "NewMinion")
+	defer logging.FuncExit(logger, start)
+	
 	reconnectMgr := NewReconnectionManager(initialReconnectDelay, maxReconnectDelay, logger)
 	registry := command.SetupCommands(shellTimeout)
 
@@ -73,9 +77,11 @@ func (m *Minion) Stop() {
 
 // run is the main orchestration loop of the minion
 func (m *Minion) run(ctx context.Context) {
+	logger, start := logging.FuncLogger(m.logger, "Minion.run")
+	defer logging.FuncExit(logger, start)
 	defer m.wg.Done()
 
-	m.logger.Debug("Starting minion run() method")
+	logger.Debug("Starting minion run() method")
 
 	// Step 1: Perform initial registration with retries
 	var resp *pb.RegisterResponse
@@ -88,7 +94,7 @@ func (m *Minion) run(ctx context.Context) {
 
 		if attempt < 5 {
 			delay := time.Duration(attempt) * time.Second
-			m.logger.Warn("Initial registration failed, retrying...",
+			logger.Warn("Initial registration failed, retrying...",
 				zap.Error(err),
 				zap.Int("attempt", attempt),
 				zap.Duration("retry_delay", delay))
@@ -100,13 +106,13 @@ func (m *Minion) run(ctx context.Context) {
 				continue
 			}
 		} else {
-			m.logger.Error("Failed to register minion after all retries", zap.Error(err))
+			logger.Error("Failed to register minion after all retries", zap.Error(err))
 			return
 		}
 	}
 
 	if !resp.Success {
-		m.logger.Error("Registration unsuccessful after retries")
+		logger.Error("Registration unsuccessful after retries")
 		return
 	}
 
@@ -114,31 +120,31 @@ func (m *Minion) run(ctx context.Context) {
 	if resp.AssignedId != "" && resp.AssignedId != m.id {
 		m.id = resp.AssignedId
 		m.updateComponentsWithNewID(resp.AssignedId)
-		m.logger.Info("Using server-assigned ID", zap.String("id", m.id))
+		logger.Info("Using server-assigned ID", zap.String("id", m.id))
 	}
 
 	// Step 2: Main command processing loop with reconnection handling
 	for {
 		select {
 		case <-ctx.Done():
-			m.logger.Debug("Context cancelled, stopping command loop")
+			logger.Debug("Context cancelled, stopping command loop")
 			return
 		case <-m.done:
-			m.logger.Debug("Minion done signal received, stopping command loop")
+			logger.Debug("Minion done signal received, stopping command loop")
 			return
 		default:
 		}
 
 		// Try to establish connection
 		if !m.connectionMgr.IsConnected() {
-			m.logger.Info("RACE CONDITION FIX: Connection not established, ensuring registration before connecting",
+			logger.Info("RACE CONDITION FIX: Connection not established, ensuring registration before connecting",
 				zap.String("minion_id", m.id))
 
 			// Re-register before attempting connection
 			// This ensures the nexus knows about this minion before StreamCommands is called
 			resp, err := m.registrationMgr.Register(ctx, nil)
 			if err != nil {
-				m.logger.Error("Re-registration failed during reconnection",
+				logger.Error("Re-registration failed during reconnection",
 					zap.String("minion_id", m.id),
 					zap.Error(err))
 				// Wait before retrying to avoid tight loop
@@ -151,7 +157,7 @@ func (m *Minion) run(ctx context.Context) {
 			}
 
 			if !resp.Success {
-				m.logger.Warn("RACE CONDITION FIX: Re-registration unsuccessful during reconnection",
+				logger.Warn("RACE CONDITION FIX: Re-registration unsuccessful during reconnection",
 					zap.String("minion_id", m.id),
 					zap.String("error", resp.ErrorMessage))
 				// Wait before retrying
@@ -163,16 +169,16 @@ func (m *Minion) run(ctx context.Context) {
 				}
 			}
 
-			m.logger.Info("RACE CONDITION FIX: Re-registration successful, now attempting connection",
+			logger.Info("RACE CONDITION FIX: Re-registration successful, now attempting connection",
 				zap.String("minion_id", m.id))
 
 			if err := m.connectionMgr.Connect(ctx); err != nil {
-				m.logger.Warn("RACE CONDITION FIX: Connect() failed after re-registration, calling HandleReconnection()",
+				logger.Warn("RACE CONDITION FIX: Connect() failed after re-registration, calling HandleReconnection()",
 					zap.String("minion_id", m.id),
 					zap.Error(err),
 					zap.String("error_type", fmt.Sprintf("%T", err)))
 				if err := m.connectionMgr.HandleReconnection(ctx); err != nil {
-					m.logger.Error("RACE CONDITION FIX: HandleReconnection() also failed",
+					logger.Error("RACE CONDITION FIX: HandleReconnection() also failed",
 						zap.String("minion_id", m.id),
 						zap.Error(err))
 					if ctx.Err() != nil {
@@ -186,18 +192,18 @@ func (m *Minion) run(ctx context.Context) {
 		// Get stream and process commands
 		stream, err := m.connectionMgr.Stream()
 		if err != nil {
-			m.logger.Error("Failed to get stream", zap.Error(err))
+			logger.Error("Failed to get stream", zap.Error(err))
 			m.connectionMgr.Disconnect() // Ensure clean state for retry
 			continue
 		}
 
 		// Process commands until error or disconnection
-		m.logger.Debug("Starting command processing loop",
+		logger.Debug("Starting command processing loop",
 			zap.String("minion_id", m.id))
 		err = m.commandProcessor.(*commandProcessor).ProcessCommands(ctx, stream)
 
 		if err != nil && ctx.Err() == nil {
-			m.logger.Error("Command processing ended with error, will reconnect",
+			logger.Error("Command processing ended with error, will reconnect",
 				zap.Error(err),
 				zap.String("error_type", fmt.Sprintf("%T", err)),
 				zap.String("minion_id", m.id))
@@ -212,7 +218,7 @@ func (m *Minion) run(ctx context.Context) {
 				// Continue with reconnection after delay
 			}
 		} else if err != nil {
-			m.logger.Debug("Command processing ended due to context cancellation",
+			logger.Debug("Command processing ended due to context cancellation",
 				zap.Error(err),
 				zap.String("minion_id", m.id))
 		}
@@ -228,6 +234,8 @@ func (m *Minion) updateComponentsWithNewID(newID string) {
 
 // periodicRegistration handles periodic registration with the nexus server
 func (m *Minion) periodicRegistration(ctx context.Context) {
+	logger, start := logging.FuncLogger(m.logger, "Minion.periodicRegistration")
+	defer logging.FuncExit(logger, start)
 	defer m.wg.Done()
 
 	// Create a context that can be cancelled by the done channel
@@ -246,12 +254,15 @@ func (m *Minion) periodicRegistration(ctx context.Context) {
 	// Use the registration manager for periodic registration
 	err := m.registrationMgr.PeriodicRegister(cancelCtx, m.heartbeatInterval)
 	if err != nil && err != context.Canceled {
-		m.logger.Error("Periodic registration ended with error", zap.Error(err))
+		logger.Error("Periodic registration ended with error", zap.Error(err))
 	}
 }
 
 // executeCommand handles the execution of a single command
 func (m *Minion) executeCommand(ctx context.Context, cmd *pb.Command) (*pb.CommandResult, error) {
+	logger, start := logging.FuncLogger(m.logger, "Minion.executeCommand")
+	defer logging.FuncExit(logger, start)
+	
 	return m.commandProcessor.Execute(ctx, cmd)
 }
 

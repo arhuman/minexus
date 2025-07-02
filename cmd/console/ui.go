@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/arhuman/minexus/internal/command"
+	"github.com/arhuman/minexus/internal/logging"
 	"github.com/arhuman/minexus/internal/version"
 
 	"github.com/chzyer/readline"
@@ -23,6 +24,9 @@ type UIManager struct {
 
 // NewUIManager creates a new UI manager
 func NewUIManager(logger *zap.Logger, registry *command.Registry) *UIManager {
+	logger, start := logging.FuncLogger(logger, "NewUIManager")
+	defer logging.FuncExit(logger, start)
+	
 	ui := &UIManager{
 		logger:   logger,
 		registry: registry,
@@ -35,9 +39,13 @@ func NewUIManager(logger *zap.Logger, registry *command.Registry) *UIManager {
 
 // setupReadline configures the readline instance with completion and history
 func (ui *UIManager) setupReadline() {
+	logger, start := logging.FuncLogger(ui.logger, "UIManager.setupReadline")
+	defer logging.FuncExit(logger, start)
+	
 	// Check if we're in a test environment to avoid race conditions
 	// Test environments often don't have proper TTY and cause issues with readline
 	if ui.isTestEnvironment() {
+		logger.Debug("Test environment detected, skipping readline setup")
 		ui.rl = nil
 		return
 	}

@@ -639,6 +639,9 @@ func NewFileMoveCommand() *FileMoveCommand {
 
 // Execute implements ExecutableCommand interface
 func (c *FileMoveCommand) Execute(ctx *ExecutionContext, payload string) (*pb.CommandResult, error) {
+	funcName := "FileMoveCommand.Execute"
+	logger, start := logging.FuncLogger(ctx.Logger, funcName)
+	defer logging.FuncExit(logger, start)
 
 	request, err := parseFileRequest(payload)
 	if err != nil {
@@ -768,6 +771,9 @@ func NewFileInfoCommand() *FileInfoCommand {
 
 // Execute implements ExecutableCommand interface
 func (c *FileInfoCommand) Execute(ctx *ExecutionContext, payload string) (*pb.CommandResult, error) {
+	funcName := "FileInfoCommand.Execute"
+	logger, start := logging.FuncLogger(ctx.Logger, funcName)
+	defer logging.FuncExit(logger, start)
 
 	request, err := parseFileRequest(payload)
 	if err != nil {

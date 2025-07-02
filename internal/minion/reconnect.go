@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	
+	"github.com/arhuman/minexus/internal/logging"
 )
 
 // ReconnectionManager handles exponential backoff reconnection strategy
@@ -22,6 +24,9 @@ type ReconnectionManager struct {
 
 // NewReconnectionManager creates a new reconnection manager with exponential backoff
 func NewReconnectionManager(initialDelay, maxDelay time.Duration, logger *zap.Logger) *ReconnectionManager {
+	logger, start := logging.FuncLogger(logger, "NewReconnectionManager")
+	defer logging.FuncExit(logger, start)
+	
 	return &ReconnectionManager{
 		initialDelay:      initialDelay,
 		maxDelay:          maxDelay,
@@ -36,6 +41,9 @@ func NewReconnectionManager(initialDelay, maxDelay time.Duration, logger *zap.Lo
 // GetNextDelay calculates and returns the next reconnection delay
 // It implements exponential backoff with optional jitter
 func (rm *ReconnectionManager) GetNextDelay() time.Duration {
+	logger, start := logging.FuncLogger(rm.logger, "ReconnectionManager.GetNextDelay")
+	defer logging.FuncExit(logger, start)
+	
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 
@@ -46,7 +54,7 @@ func (rm *ReconnectionManager) GetNextDelay() time.Duration {
 		if rm.jitterEnabled {
 			finalDelay = rm.addJitter(rm.currentDelay)
 		}
-		rm.logger.Debug("First reconnection attempt",
+		logger.Debug("First reconnection attempt",
 			zap.Duration("base_delay", rm.currentDelay),
 			zap.Duration("final_delay", finalDelay),
 			zap.Int("attempt", rm.attemptCount),
@@ -71,7 +79,7 @@ func (rm *ReconnectionManager) GetNextDelay() time.Duration {
 		finalDelay = rm.addJitter(rm.currentDelay)
 	}
 
-	rm.logger.Debug("Calculated next reconnection delay",
+	logger.Debug("Calculated next reconnection delay",
 		zap.Duration("base_delay", rm.currentDelay),
 		zap.Duration("final_delay", finalDelay),
 		zap.Int("attempt", rm.attemptCount),
@@ -84,10 +92,13 @@ func (rm *ReconnectionManager) GetNextDelay() time.Duration {
 // ResetDelay resets the reconnection delay back to initial value
 // This should be called upon successful reconnection
 func (rm *ReconnectionManager) ResetDelay() {
+	logger, start := logging.FuncLogger(rm.logger, "ReconnectionManager.ResetDelay")
+	defer logging.FuncExit(logger, start)
+	
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 
-	rm.logger.Debug("Resetting reconnection delay to initial value",
+	logger.Debug("Resetting reconnection delay to initial value",
 		zap.Duration("previous_delay", rm.currentDelay),
 		zap.Duration("initial_delay", rm.initialDelay),
 		zap.Int("previous_attempts", rm.attemptCount))
