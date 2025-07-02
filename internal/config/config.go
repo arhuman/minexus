@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	
+	"github.com/arhuman/minexus/internal/logging"
 )
 
 // ValidationError represents a configuration validation error
@@ -485,6 +487,9 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	// Create a simple logger for configuration loading diagnostics
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
+	
+	logger, start := logging.FuncLogger(logger, "LoadNexusConfig")
+	defer logging.FuncExit(logger, start)
 
 	loader := NewConfigLoader().WithLogger(logger)
 	if err := loader.LoadEnvFile(".env"); err != nil {

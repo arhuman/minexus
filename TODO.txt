@@ -1,5 +1,11 @@
 # TODO
 
+## Refactoring
+* consistent logging everywhere
+* Reduce complexity
+* internal/commands/file_commands Execute signature has error but no more used?
+
+## Features
 * Event notification system / periodic command on minions
 * Network commands
   - ping
@@ -20,5 +26,4 @@
 When architecture will be frozen:
 
 * Security
-  * TLS encryption/authentication
   * shell command security sanitization

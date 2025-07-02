@@ -11,6 +11,7 @@ import (
 
 	"github.com/arhuman/minexus/internal/certs"
 	"github.com/arhuman/minexus/internal/config"
+	"github.com/arhuman/minexus/internal/logging"
 	pb "github.com/arhuman/minexus/protogen"
 
 	"go.uber.org/zap"
@@ -27,6 +28,9 @@ type GRPCClient struct {
 
 // NewGRPCClient creates a new gRPC client instance
 func NewGRPCClient(cfg *config.ConsoleConfig, logger *zap.Logger) (*GRPCClient, error) {
+	logger, start := logging.FuncLogger(logger, "NewGRPCClient")
+	defer logging.FuncExit(logger, start)
+	
 	// Connect to Nexus server
 	logger.Info("Connecting to Nexus server", zap.String("address", cfg.ServerAddr))
 

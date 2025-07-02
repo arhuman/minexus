@@ -11,6 +11,8 @@ import (
 	pb "github.com/arhuman/minexus/protogen"
 
 	"go.uber.org/zap"
+	
+	"github.com/arhuman/minexus/internal/logging"
 )
 
 // registrationManager implements the RegistrationManager interface
@@ -23,6 +25,9 @@ type registrationManager struct {
 
 // NewRegistrationManager creates a new registration manager
 func NewRegistrationManager(id string, service pb.MinionServiceClient, connMgr ConnectionManager, logger *zap.Logger) *registrationManager {
+	logger, start := logging.FuncLogger(logger, "NewRegistrationManager")
+	defer logging.FuncExit(logger, start)
+	
 	return &registrationManager{
 		id:            id,
 		service:       service,
@@ -33,36 +38,39 @@ func NewRegistrationManager(id string, service pb.MinionServiceClient, connMgr C
 
 // Register performs initial registration with the nexus server using host information
 func (rm *registrationManager) Register(ctx context.Context, hostInfo *pb.HostInfo) (*pb.RegisterResponse, error) {
-	rm.logger.Debug("Creating host info for registration")
+	logger, start := logging.FuncLogger(rm.logger, "registrationManager.Register")
+	defer logging.FuncExit(logger, start)
+	
+	logger.Debug("Creating host info for registration")
 	if hostInfo == nil {
 		var err error
 		hostInfo, err = rm.createHostInfo()
 		if err != nil {
-			rm.logger.Error("Failed to create host info", zap.Error(err))
+			logger.Error("Failed to create host info", zap.Error(err))
 			return nil, err
 		}
 	}
 
-	rm.logger.Debug("Calling Register gRPC method")
+	logger.Debug("Calling Register gRPC method")
 	resp, err := rm.service.Register(ctx, hostInfo)
 	if err != nil {
-		rm.logger.Error("Failed to register minion", zap.Error(err))
+		logger.Error("Failed to register minion", zap.Error(err))
 		return nil, err
 	}
 
 	if !resp.Success {
-		rm.logger.Error("Registration unsuccessful",
+		logger.Error("Registration unsuccessful",
 			zap.String("error", resp.ErrorMessage))
 
 		return resp, nil
 	}
 
-	rm.logger.Debug("Registration successful")
+	logger.Debug("Registration successful")
 
 	// If server assigned a new ID, update it
 	if resp.AssignedId != "" && resp.AssignedId != rm.id {
 		rm.id = resp.AssignedId
-		rm.logger.Info("Using server-assigned ID", zap.String("id", rm.id))
+		logger.Info("Using server-assigned ID", zap.String("id", rm.id))
 	}
 
 	return resp, nil
@@ -70,43 +78,46 @@ func (rm *registrationManager) Register(ctx context.Context, hostInfo *pb.HostIn
 
 // PeriodicRegister performs periodic registration heartbeats at the specified interval
 func (rm *registrationManager) PeriodicRegister(ctx context.Context, interval time.Duration) error {
+	logger, start := logging.FuncLogger(rm.logger, "registrationManager.PeriodicRegister")
+	defer logging.FuncExit(logger, start)
+	
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	rm.logger.Debug("Starting periodic registration",
+	logger.Debug("Starting periodic registration",
 		zap.Duration("interval", interval),
 		zap.String("minion_id", rm.id))
 
 	for {
 		select {
 		case <-ctx.Done():
-			rm.logger.Debug("Context cancelled, stopping periodic registration")
+			logger.Debug("Context cancelled, stopping periodic registration")
 			return ctx.Err()
 		case <-ticker.C:
 			// Create updated host info for heartbeat
 			hostInfo, err := rm.createHostInfo()
 			if err != nil {
-				rm.logger.Error("Failed to create host info for periodic registration", zap.Error(err))
+				logger.Error("Failed to create host info for periodic registration", zap.Error(err))
 				continue
 			}
 
-			rm.logger.Debug("Performing periodic registration",
+			logger.Debug("Performing periodic registration",
 				zap.String("minion_id", rm.id))
 
 			// Attempt to register
 			resp, err := rm.service.Register(ctx, hostInfo)
 			if err != nil {
-				rm.logger.Error("Periodic registration failed", zap.Error(err))
+				logger.Error("Periodic registration failed", zap.Error(err))
 				continue
 			}
 
 			if !resp.Success {
-				rm.logger.Error("Periodic registration unsuccessful",
+				logger.Error("Periodic registration unsuccessful",
 					zap.String("error", resp.ErrorMessage))
 				continue
 			}
 
-			rm.logger.Debug("Periodic registration successful",
+			logger.Debug("Periodic registration successful",
 				zap.String("minion_id", rm.id))
 		}
 	}
@@ -146,6 +157,8 @@ func getHostname() string {
 // getIPAddress returns the IP address used for connecting to the nexus server.
 // It first tries to get the local address if connected, then falls back to network interface detection.
 func (rm *registrationManager) getIPAddress() string {
+	logger, start := logging.FuncLogger(rm.logger, "registrationManager.getIPAddress")
+	defer logging.FuncExit(logger, start)
 	// Try to get the local address if we're connected
 	if rm.connectionMgr.IsConnected() {
 		// Create a UDP connection to determine the outbound IP
@@ -154,7 +167,7 @@ func (rm *registrationManager) getIPAddress() string {
 			defer conn.Close()
 			if localAddr, ok := conn.LocalAddr().(*net.UDPAddr); ok {
 				if !localAddr.IP.IsLoopback() && localAddr.IP.To4() != nil {
-					rm.logger.Debug("Using IP from active connection", zap.String("ip", localAddr.IP.String()))
+					logger.Debug("Using IP from active connection", zap.String("ip", localAddr.IP.String()))
 					return localAddr.IP.String()
 				}
 			}
@@ -164,7 +177,7 @@ func (rm *registrationManager) getIPAddress() string {
 	// Fallback to interface detection
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
-		rm.logger.Error("Failed to get interface addresses", zap.Error(err))
+		logger.Error("Failed to get interface addresses", zap.Error(err))
 		return "unknown"
 	}
 
@@ -180,11 +193,11 @@ func (rm *registrationManager) getIPAddress() string {
 		}
 
 		if ip4 := ipNet.IP.To4(); ip4 != nil {
-			rm.logger.Debug("Using IP from network interface", zap.String("ip", ip4.String()))
+			logger.Debug("Using IP from network interface", zap.String("ip", ip4.String()))
 			return ip4.String()
 		}
 	}
 
-	rm.logger.Warn("No suitable network interface found")
+	logger.Warn("No suitable network interface found")
 	return "unknown"
 }

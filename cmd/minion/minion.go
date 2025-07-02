@@ -14,6 +14,7 @@ import (
 
 	"github.com/arhuman/minexus/internal/certs"
 	"github.com/arhuman/minexus/internal/config"
+	"github.com/arhuman/minexus/internal/logging"
 	"github.com/arhuman/minexus/internal/minion"
 	"github.com/arhuman/minexus/internal/version"
 	pb "github.com/arhuman/minexus/protogen"
@@ -47,6 +48,9 @@ func setupLogger(debug bool) (*zap.Logger, zap.AtomicLevel, error) {
 
 // setupGRPCConnection establishes connection to the server
 func setupGRPCConnection(cfg *config.MinionConfig, logger *zap.Logger) (*grpc.ClientConn, error) {
+	logger, start := logging.FuncLogger(logger, "setupGRPCConnection")
+	defer logging.FuncExit(logger, start)
+	
 	// Configure TLS credentials (mandatory, embedded)
 	logger.Info("Configuring embedded TLS for minion client")
 
