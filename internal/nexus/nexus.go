@@ -175,10 +175,32 @@ func (s *Server) StreamCommands(stream pb.MinionService_StreamCommandsServer) er
 	logger, start := logging.FuncLogger(s.logger, "nexus.Server.StreamCommands")
 	defer logging.FuncExit(logger, start)
 
+	// Validate and extract minion ID
+	minionID, err := s.validateAndExtractMinionID(stream, logger)
+	if err != nil {
+		return err
+	}
+
+	// Find minion connection with retry logic
+	conn, err := s.findMinionConnectionWithRetry(minionID, logger, start)
+	if err != nil {
+		return err
+	}
+
+	// Setup connection and start message handling
+	s.setupConnection(minionID, logger)
+	errCh := s.startMessageReceiver(stream, logger)
+
+	// Run main command dispatch loop
+	return s.runCommandDispatchLoop(stream, conn, errCh, minionID, logger)
+}
+
+// validateAndExtractMinionID validates and extracts the minion ID from the stream context
+func (s *Server) validateAndExtractMinionID(stream pb.MinionService_StreamCommandsServer, logger *zap.Logger) (string, error) {
 	minionID := GetMinionIDFromContext(stream.Context())
 	if minionID == "" {
 		logger.Error("Minion ID not provided")
-		return status.Error(codes.Unauthenticated, "minion ID not provided")
+		return "", status.Error(codes.Unauthenticated, "minion ID not provided")
 	}
 
 	// RACE CONDITION DIAGNOSIS: Log concurrent StreamCommands attempts
@@ -187,65 +209,91 @@ func (s *Server) StreamCommands(stream pb.MinionService_StreamCommandsServer) er
 		zap.String("stream_ptr", fmt.Sprintf("%p", stream)),
 		zap.Time("timestamp", time.Now()))
 
-	// Enhanced retry connection lookup with longer backoff
-	// This handles the race condition where StreamCommands is called immediately
-	// after Register but before the registry state is fully consistent
-	minionRegistryImpl := s.minionRegistry.(*MinionRegistryImpl)
-	var conn *MinionConnectionImpl
-	var exists bool
+	return minionID, nil
+}
 
-	// RACE CONDITION DIAGNOSIS: Check registry state before retry
-	allMinions := minionRegistryImpl.ListMinions()
+// findMinionConnectionWithRetry finds the minion connection using retry logic for race condition handling
+func (s *Server) findMinionConnectionWithRetry(minionID string, logger *zap.Logger, start time.Time) (*MinionConnectionImpl, error) {
+	minionRegistryImpl := s.minionRegistry.(*MinionRegistryImpl)
+
+	// Log current registry state for diagnosis
+	s.logRegistryState(minionRegistryImpl, minionID, logger)
+
+	// Attempt to find connection with retry
+	conn, exists := s.retryFindConnection(minionRegistryImpl, minionID, logger, start)
+	if !exists {
+		logger.Error("Minion not found after all retries",
+			zap.String("minion_id", minionID),
+			zap.Duration("total_retry_time", time.Since(start)))
+		return nil, status.Error(codes.NotFound, "minion not found")
+	}
+
+	return conn, nil
+}
+
+// logRegistryState logs the current state of the minion registry for diagnosis
+func (s *Server) logRegistryState(registry *MinionRegistryImpl, minionID string, logger *zap.Logger) {
+	allMinions := registry.ListMinions()
 	logger.Info("RACE CONDITION DIAGNOSIS: Registry state",
 		zap.String("minion_id", minionID),
 		zap.Int("total_minions", len(allMinions)),
-		zap.Strings("minion_ids", func() []string {
-			ids := make([]string, len(allMinions))
-			for i, m := range allMinions {
-				ids[i] = m.Id
-			}
-			return ids
-		}()))
+		zap.Strings("minion_ids", s.extractMinionIDs(allMinions)))
+}
 
-	// Use optimized retry settings (formerly test-only, now default)
-	maxAttempts := 3                   // Optimized: reduced from 5 to 3 for faster feedback
-	baseDelay := 10 * time.Millisecond // Optimized: reduced from 50ms to 10ms for faster retry
+// extractMinionIDs extracts minion IDs from a list of host info
+func (s *Server) extractMinionIDs(hostInfos []*pb.HostInfo) []string {
+	ids := make([]string, len(hostInfos))
+	for i, h := range hostInfos {
+		ids[i] = h.Id
+	}
+	return ids
+}
+
+// retryFindConnection attempts to find a minion connection with exponential backoff
+func (s *Server) retryFindConnection(registry *MinionRegistryImpl, minionID string, logger *zap.Logger, start time.Time) (*MinionConnectionImpl, bool) {
+	maxAttempts := 3
+	baseDelay := 10 * time.Millisecond
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		conn, exists = minionRegistryImpl.GetConnectionImpl(minionID)
+		conn, exists := registry.GetConnectionImpl(minionID)
 		if exists {
 			logger.Info("RACE CONDITION FIX: Connection found",
 				zap.String("minion_id", minionID),
 				zap.Int("attempt", attempt+1),
 				zap.Duration("total_retry_time", time.Since(start)))
-			break
+			return conn, true
 		}
 
-		if attempt < maxAttempts-1 { // Don't sleep on the last attempt
-			backoffDelay := time.Duration((attempt*attempt + 1)) * baseDelay
-			logger.Warn("Minion not found, retrying",
-				zap.String("minion_id", minionID),
-				zap.Int("attempt", attempt+1),
-				zap.Duration("backoff_delay", backoffDelay),
-				zap.Duration("elapsed_time", time.Since(start)))
-			time.Sleep(backoffDelay)
+		if attempt < maxAttempts-1 {
+			s.waitWithBackoff(attempt, baseDelay, minionID, logger, start)
 		}
 	}
 
-	if !exists {
-		logger.Error("Minion not found after all retries",
-			zap.String("minion_id", minionID),
-			zap.Duration("total_retry_time", time.Since(start)))
-		return status.Error(codes.NotFound, "minion not found")
-	}
+	return nil, false
+}
 
+// waitWithBackoff waits with exponential backoff between retry attempts
+func (s *Server) waitWithBackoff(attempt int, baseDelay time.Duration, minionID string, logger *zap.Logger, start time.Time) {
+	backoffDelay := time.Duration((attempt*attempt + 1)) * baseDelay
+	logger.Warn("Minion not found, retrying",
+		zap.String("minion_id", minionID),
+		zap.Int("attempt", attempt+1),
+		zap.Duration("backoff_delay", backoffDelay),
+		zap.Duration("elapsed_time", time.Since(start)))
+	time.Sleep(backoffDelay)
+}
+
+// setupConnection sets up the connection for the minion
+func (s *Server) setupConnection(minionID string, logger *zap.Logger) {
 	logger.Debug("Minion connected to command stream", zap.String("minion_id", minionID))
+	minionRegistryImpl := s.minionRegistry.(*MinionRegistryImpl)
 	minionRegistryImpl.UpdateLastSeen(minionID)
+}
 
-	// Create error channel for coordinating goroutine termination
+// startMessageReceiver starts a goroutine to receive messages from the minion
+func (s *Server) startMessageReceiver(stream pb.MinionService_StreamCommandsServer, logger *zap.Logger) chan error {
 	errCh := make(chan error, 1)
 
-	// Start goroutine to receive messages from minion
 	go func() {
 		for {
 			msg, err := stream.Recv()
@@ -254,78 +302,112 @@ func (s *Server) StreamCommands(stream pb.MinionService_StreamCommandsServer) er
 				return
 			}
 
-			switch m := msg.Message.(type) {
-			case *pb.CommandStreamMessage_Result:
-				// Handle command result
-				result := m.Result
-				logger.Info("COMMAND_FLOW_MONITORING: Command result received from minion",
-					zap.String("stage", "RESULT_RECEIVED"),
-					zap.String("command_id", result.CommandId),
-					zap.String("minion_id", result.MinionId),
-					zap.Int32("exit_code", result.ExitCode),
-					zap.Time("timestamp", time.Now()))
-
-				if s.dbService != nil {
-					if err := s.dbService.StoreCommandResult(stream.Context(), result); err != nil {
-						logger.Error("COMMAND_FLOW_MONITORING: Result storage failed",
-							zap.String("stage", "RESULT_STORAGE_FAILED"),
-							zap.String("command_id", result.CommandId),
-							zap.String("minion_id", result.MinionId),
-							zap.Error(err),
-							zap.Time("timestamp", time.Now()))
-					} else {
-						logger.Info("COMMAND_FLOW_MONITORING: Result stored successfully",
-							zap.String("stage", "RESULT_STORAGE_SUCCESS"),
-							zap.String("command_id", result.CommandId),
-							zap.String("minion_id", result.MinionId),
-							zap.Time("timestamp", time.Now()))
-					}
-				} else {
-					logger.Warn("COMMAND_FLOW_MONITORING: Database unavailable - result not persisted",
-						zap.String("stage", "RESULT_STORAGE_SKIPPED"),
-						zap.String("command_id", result.CommandId),
-						zap.String("minion_id", result.MinionId),
-						zap.Time("timestamp", time.Now()))
-				}
-
-			case *pb.CommandStreamMessage_Status:
-				// Handle status update
-				status := m.Status
-				logger.Debug("COMMAND_FLOW_MONITORING: Status update received",
-					zap.String("stage", "STATUS_UPDATE_RECEIVED"),
-					zap.String("command_id", status.CommandId),
-					zap.String("minion_id", status.MinionId),
-					zap.String("status", status.Status),
-					zap.Time("timestamp", time.Now()))
-
-				if s.dbService != nil {
-					if err := s.dbService.UpdateCommandStatus(stream.Context(), status.CommandId, status.Status); err != nil {
-						logger.Error("COMMAND_FLOW_MONITORING: Status update failed",
-							zap.String("stage", "STATUS_UPDATE_FAILED"),
-							zap.String("command_id", status.CommandId),
-							zap.String("minion_id", status.MinionId),
-							zap.String("status", status.Status),
-							zap.Error(err),
-							zap.Time("timestamp", time.Now()))
-					} else {
-						logger.Debug("COMMAND_FLOW_MONITORING: Status updated successfully",
-							zap.String("stage", "STATUS_UPDATE_SUCCESS"),
-							zap.String("command_id", status.CommandId),
-							zap.String("status", status.Status),
-							zap.Time("timestamp", time.Now()))
-					}
-				} else {
-					logger.Warn("COMMAND_FLOW_MONITORING: Database unavailable - status not updated",
-						zap.String("stage", "STATUS_UPDATE_SKIPPED"),
-						zap.String("command_id", status.CommandId),
-						zap.String("status", status.Status),
-						zap.Time("timestamp", time.Now()))
-				}
-			}
+			s.handleReceivedMessage(stream, msg, logger)
 		}
 	}()
 
-	// Main loop for sending commands
+	return errCh
+}
+
+// handleReceivedMessage handles different types of messages received from minions
+func (s *Server) handleReceivedMessage(stream pb.MinionService_StreamCommandsServer, msg *pb.CommandStreamMessage, logger *zap.Logger) {
+	switch m := msg.Message.(type) {
+	case *pb.CommandStreamMessage_Result:
+		s.handleCommandResult(stream, m.Result, logger)
+	case *pb.CommandStreamMessage_Status:
+		s.handleStatusUpdate(stream, m.Status, logger)
+	}
+}
+
+// handleCommandResult handles command result messages
+func (s *Server) handleCommandResult(stream pb.MinionService_StreamCommandsServer, result *pb.CommandResult, logger *zap.Logger) {
+	logger.Info("COMMAND_FLOW_MONITORING: Command result received from minion",
+		zap.String("stage", "RESULT_RECEIVED"),
+		zap.String("command_id", result.CommandId),
+		zap.String("minion_id", result.MinionId),
+		zap.Int32("exit_code", result.ExitCode),
+		zap.Time("timestamp", time.Now()))
+
+	if s.dbService != nil {
+		s.storeCommandResult(stream, result, logger)
+	} else {
+		s.logSkippedResultStorage(result, logger)
+	}
+}
+
+// storeCommandResult stores the command result in the database
+func (s *Server) storeCommandResult(stream pb.MinionService_StreamCommandsServer, result *pb.CommandResult, logger *zap.Logger) {
+	if err := s.dbService.StoreCommandResult(stream.Context(), result); err != nil {
+		logger.Error("COMMAND_FLOW_MONITORING: Result storage failed",
+			zap.String("stage", "RESULT_STORAGE_FAILED"),
+			zap.String("command_id", result.CommandId),
+			zap.String("minion_id", result.MinionId),
+			zap.Error(err),
+			zap.Time("timestamp", time.Now()))
+	} else {
+		logger.Info("COMMAND_FLOW_MONITORING: Result stored successfully",
+			zap.String("stage", "RESULT_STORAGE_SUCCESS"),
+			zap.String("command_id", result.CommandId),
+			zap.String("minion_id", result.MinionId),
+			zap.Time("timestamp", time.Now()))
+	}
+}
+
+// logSkippedResultStorage logs when result storage is skipped due to unavailable database
+func (s *Server) logSkippedResultStorage(result *pb.CommandResult, logger *zap.Logger) {
+	logger.Warn("COMMAND_FLOW_MONITORING: Database unavailable - result not persisted",
+		zap.String("stage", "RESULT_STORAGE_SKIPPED"),
+		zap.String("command_id", result.CommandId),
+		zap.String("minion_id", result.MinionId),
+		zap.Time("timestamp", time.Now()))
+}
+
+// handleStatusUpdate handles status update messages
+func (s *Server) handleStatusUpdate(stream pb.MinionService_StreamCommandsServer, statusUpdate *pb.CommandStatusUpdate, logger *zap.Logger) {
+	logger.Debug("COMMAND_FLOW_MONITORING: Status update received",
+		zap.String("stage", "STATUS_UPDATE_RECEIVED"),
+		zap.String("command_id", statusUpdate.CommandId),
+		zap.String("minion_id", statusUpdate.MinionId),
+		zap.String("status", statusUpdate.Status),
+		zap.Time("timestamp", time.Now()))
+
+	if s.dbService != nil {
+		s.updateCommandStatus(stream, statusUpdate, logger)
+	} else {
+		s.logSkippedStatusUpdate(statusUpdate, logger)
+	}
+}
+
+// updateCommandStatus updates the command status in the database
+func (s *Server) updateCommandStatus(stream pb.MinionService_StreamCommandsServer, statusUpdate *pb.CommandStatusUpdate, logger *zap.Logger) {
+	if err := s.dbService.UpdateCommandStatus(stream.Context(), statusUpdate.CommandId, statusUpdate.Status); err != nil {
+		logger.Error("COMMAND_FLOW_MONITORING: Status update failed",
+			zap.String("stage", "STATUS_UPDATE_FAILED"),
+			zap.String("command_id", statusUpdate.CommandId),
+			zap.String("minion_id", statusUpdate.MinionId),
+			zap.String("status", statusUpdate.Status),
+			zap.Error(err),
+			zap.Time("timestamp", time.Now()))
+	} else {
+		logger.Debug("COMMAND_FLOW_MONITORING: Status updated successfully",
+			zap.String("stage", "STATUS_UPDATE_SUCCESS"),
+			zap.String("command_id", statusUpdate.CommandId),
+			zap.String("status", statusUpdate.Status),
+			zap.Time("timestamp", time.Now()))
+	}
+}
+
+// logSkippedStatusUpdate logs when status update is skipped due to unavailable database
+func (s *Server) logSkippedStatusUpdate(statusUpdate *pb.CommandStatusUpdate, logger *zap.Logger) {
+	logger.Warn("COMMAND_FLOW_MONITORING: Database unavailable - status not updated",
+		zap.String("stage", "STATUS_UPDATE_SKIPPED"),
+		zap.String("command_id", statusUpdate.CommandId),
+		zap.String("status", statusUpdate.Status),
+		zap.Time("timestamp", time.Now()))
+}
+
+// runCommandDispatchLoop runs the main loop for dispatching commands to minions
+func (s *Server) runCommandDispatchLoop(stream pb.MinionService_StreamCommandsServer, conn *MinionConnectionImpl, errCh chan error, minionID string, logger *zap.Logger) error {
 	for {
 		select {
 		case <-stream.Context().Done():
@@ -340,24 +422,32 @@ func (s *Server) StreamCommands(stream pb.MinionService_StreamCommandsServer) er
 				return nil
 			}
 
-			msg := &pb.CommandStreamMessage{
-				Message: &pb.CommandStreamMessage_Command{
-					Command: cmd,
-				},
-			}
-
-			if err := stream.Send(msg); err != nil {
-				logger.Error("Failed to send command",
-					zap.String("minion_id", minionID),
-					zap.String("command_id", cmd.Id))
+			if err := s.sendCommandToMinion(stream, cmd, minionID, logger); err != nil {
 				return err
 			}
-
-			logger.Debug("Command sent successfully",
-				zap.String("minion_id", minionID),
-				zap.String("command_id", cmd.Id))
 		}
 	}
+}
+
+// sendCommandToMinion sends a command to the specified minion
+func (s *Server) sendCommandToMinion(stream pb.MinionService_StreamCommandsServer, cmd *pb.Command, minionID string, logger *zap.Logger) error {
+	msg := &pb.CommandStreamMessage{
+		Message: &pb.CommandStreamMessage_Command{
+			Command: cmd,
+		},
+	}
+
+	if err := stream.Send(msg); err != nil {
+		logger.Error("Failed to send command",
+			zap.String("minion_id", minionID),
+			zap.String("command_id", cmd.Id))
+		return err
+	}
+
+	logger.Debug("Command sent successfully",
+		zap.String("minion_id", minionID),
+		zap.String("command_id", cmd.Id))
+	return nil
 }
 
 // ListMinions returns a list of all registered minions in the ConsoleService.

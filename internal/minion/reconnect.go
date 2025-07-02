@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	
+
 	"github.com/arhuman/minexus/internal/logging"
 )
 
@@ -26,7 +26,7 @@ type ReconnectionManager struct {
 func NewReconnectionManager(initialDelay, maxDelay time.Duration, logger *zap.Logger) *ReconnectionManager {
 	logger, start := logging.FuncLogger(logger, "NewReconnectionManager")
 	defer logging.FuncExit(logger, start)
-	
+
 	return &ReconnectionManager{
 		initialDelay:      initialDelay,
 		maxDelay:          maxDelay,
@@ -43,7 +43,7 @@ func NewReconnectionManager(initialDelay, maxDelay time.Duration, logger *zap.Lo
 func (rm *ReconnectionManager) GetNextDelay() time.Duration {
 	logger, start := logging.FuncLogger(rm.logger, "ReconnectionManager.GetNextDelay")
 	defer logging.FuncExit(logger, start)
-	
+
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 
@@ -94,7 +94,7 @@ func (rm *ReconnectionManager) GetNextDelay() time.Duration {
 func (rm *ReconnectionManager) ResetDelay() {
 	logger, start := logging.FuncLogger(rm.logger, "ReconnectionManager.ResetDelay")
 	defer logging.FuncExit(logger, start)
-	
+
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 

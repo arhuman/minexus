@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
-	
+
 	"github.com/arhuman/minexus/internal/logging"
 )
 
@@ -30,7 +30,7 @@ type connectionManager struct {
 func NewConnectionManager(id string, service pb.MinionServiceClient, reconnectMgr *ReconnectionManager, logger *zap.Logger) *connectionManager {
 	logger, start := logging.FuncLogger(logger, "NewConnectionManager")
 	defer logging.FuncExit(logger, start)
-	
+
 	return &connectionManager{
 		id:           id,
 		service:      service,
@@ -45,7 +45,7 @@ func NewConnectionManager(id string, service pb.MinionServiceClient, reconnectMg
 func (cm *connectionManager) Connect(ctx context.Context) error {
 	logger, start := logging.FuncLogger(cm.logger, "connectionManager.Connect")
 	defer logging.FuncExit(logger, start)
-	
+
 	// RACE CONDITION DIAGNOSIS: Check for concurrent connection attempts
 	cm.stateMutex.Lock()
 	if cm.connecting {
@@ -106,10 +106,10 @@ func (cm *connectionManager) Connect(ctx context.Context) error {
 func (cm *connectionManager) Disconnect() error {
 	logger, start := logging.FuncLogger(cm.logger, "connectionManager.Disconnect")
 	defer logging.FuncExit(logger, start)
-	
+
 	cm.stateMutex.Lock()
 	defer cm.stateMutex.Unlock()
-	
+
 	if cm.stream != nil {
 		logger.Info("Closing command stream",
 			zap.String("minion_id", cm.id),
@@ -148,7 +148,7 @@ func (cm *connectionManager) Stream() (pb.MinionService_StreamCommandsClient, er
 func (cm *connectionManager) HandleReconnection(ctx context.Context) error {
 	logger, start := logging.FuncLogger(cm.logger, "connectionManager.HandleReconnection")
 	defer logging.FuncExit(logger, start)
-	
+
 	// RACE CONDITION DIAGNOSIS: Check for concurrent connection attempts
 	cm.stateMutex.Lock()
 	if cm.connecting {

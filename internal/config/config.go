@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	
+
 	"github.com/arhuman/minexus/internal/logging"
 )
 
@@ -487,7 +487,7 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	// Create a simple logger for configuration loading diagnostics
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
-	
+
 	logger, start := logging.FuncLogger(logger, "LoadNexusConfig")
 	defer logging.FuncExit(logger, start)
 
@@ -626,16 +626,32 @@ func LoadMinionConfig() (*MinionConfig, error) {
 	config := DefaultMinionConfig()
 	var validationErrors []error
 
+	// Load configuration from environment variables
+	loadMinionEnvConfig(loader, config, &validationErrors)
+
+	// Parse and apply command line flags
+	flagValues := parseMinionFlags(config)
+	flag.Parse()
+	applyMinionFlags(loader, config, flagValues, &validationErrors)
+
+	// Perform final validations
+	validateMinionConfigConsistency(config, &validationErrors)
+
+	return finalizeMinionConfig(config, validationErrors)
+}
+
+// loadMinionEnvConfig loads configuration from environment variables
+func loadMinionEnvConfig(loader *ConfigLoader, config *MinionConfig, validationErrors *[]error) {
 	// Load and validate server hostname
 	nexusServer := loader.GetString("NEXUS_SERVER", "localhost")
 	if err := loader.ValidateHostname("NEXUS_SERVER", nexusServer); err != nil {
-		validationErrors = append(validationErrors, err)
+		*validationErrors = append(*validationErrors, err)
 	}
 
 	// Load and validate nexus port
 	nexusPort, err := loader.GetIntInRange("NEXUS_MINION_PORT", 11972, 1, 65535)
 	if err != nil {
-		validationErrors = append(validationErrors, err)
+		*validationErrors = append(*validationErrors, err)
 	}
 
 	// Construct server address from hostname and port
@@ -646,142 +662,126 @@ func LoadMinionConfig() (*MinionConfig, error) {
 
 	// Load debug flag
 	if debug, err := loader.GetBool("DEBUG", config.Debug); err != nil {
-		validationErrors = append(validationErrors, err)
+		*validationErrors = append(*validationErrors, err)
 	} else {
 		config.Debug = debug
 	}
 
-	// Load and validate timeouts
-	if connectTimeout, err := loader.GetIntInRange("CONNECT_TIMEOUT", config.ConnectTimeout, 1, 300); err != nil {
-		validationErrors = append(validationErrors, err)
-	} else {
-		config.ConnectTimeout = connectTimeout
+	// Load timeout configurations
+	loadMinionTimeouts(loader, config, validationErrors)
+}
+
+// loadMinionTimeouts loads timeout-related configuration from environment variables
+func loadMinionTimeouts(loader *ConfigLoader, config *MinionConfig, validationErrors *[]error) {
+	timeoutConfigs := []struct {
+		envVar   string
+		target   *int
+		min, max int
+	}{
+		{"CONNECT_TIMEOUT", &config.ConnectTimeout, 1, 300},
+		{"INITIAL_RECONNECT_DELAY", &config.InitialReconnectDelay, 1, 3600},
+		{"MAX_RECONNECT_DELAY", &config.MaxReconnectDelay, 1, 3600},
+		{"HEARTBEAT_INTERVAL", &config.HeartbeatInterval, 5, 300},
+		{"DEFAULT_SHELL_TIMEOUT", &config.DefaultShellTimeout, 5, 300},
+		{"STREAM_TIMEOUT", &config.StreamTimeout, 10, 300},
 	}
 
-	if initialDelay, err := loader.GetIntInRange("INITIAL_RECONNECT_DELAY", config.InitialReconnectDelay, 1, 3600); err != nil {
-		validationErrors = append(validationErrors, err)
+	for _, tc := range timeoutConfigs {
+		if value, err := loader.GetIntInRange(tc.envVar, *tc.target, tc.min, tc.max); err != nil {
+			*validationErrors = append(*validationErrors, err)
+		} else {
+			*tc.target = value
+		}
+	}
+}
+
+// minionFlagValues holds the parsed command line flag values
+type minionFlagValues struct {
+	serverAddr            *string
+	id                    *string
+	debug                 *bool
+	connectTimeout        *int
+	initialReconnectDelay *int
+	maxReconnectDelay     *int
+	heartbeatInterval     *int
+	defaultShellTimeout   *int
+	streamTimeout         *int
+}
+
+// parseMinionFlags parses command line flags and returns the flag pointers
+func parseMinionFlags(config *MinionConfig) *minionFlagValues {
+	return &minionFlagValues{
+		serverAddr:            flag.String("server", config.ServerAddr, "Nexus server address"),
+		id:                    flag.String("id", config.ID, "Minion ID (optional, will be generated if not provided)"),
+		debug:                 flag.Bool("debug", config.Debug, "Enable debug mode"),
+		connectTimeout:        flag.Int("connect-timeout", config.ConnectTimeout, "Connection timeout in seconds"),
+		initialReconnectDelay: flag.Int("initial-reconnect-delay", config.InitialReconnectDelay, "Initial reconnection delay in seconds (exponential backoff starting point)"),
+		maxReconnectDelay:     flag.Int("max-reconnect-delay", config.MaxReconnectDelay, "Maximum reconnection delay in seconds (exponential backoff cap)"),
+		heartbeatInterval:     flag.Int("heartbeat-interval", config.HeartbeatInterval, "Heartbeat interval in seconds"),
+		defaultShellTimeout:   flag.Int("default-shell-timeout", config.DefaultShellTimeout, "Default timeout for shell command execution in seconds"),
+		streamTimeout:         flag.Int("stream-timeout", config.StreamTimeout, "Timeout for stream operations in seconds"),
+	}
+}
+
+// applyMinionFlags applies command line flag values to the configuration
+func applyMinionFlags(loader *ConfigLoader, config *MinionConfig, flags *minionFlagValues, validationErrors *[]error) {
+	// Apply and validate server address
+	if err := loader.ValidateNetworkAddress("server", *flags.serverAddr); err != nil {
+		*validationErrors = append(*validationErrors, err)
 	} else {
-		config.InitialReconnectDelay = initialDelay
+		config.ServerAddr = *flags.serverAddr
 	}
 
-	if maxDelay, err := loader.GetIntInRange("MAX_RECONNECT_DELAY", config.MaxReconnectDelay, 1, 3600); err != nil {
-		validationErrors = append(validationErrors, err)
-	} else {
-		config.MaxReconnectDelay = maxDelay
+	// Apply simple flags
+	config.ID = *flags.id
+	config.Debug = *flags.debug
+
+	// Apply and validate timeout flags
+	applyMinionTimeoutFlags(config, flags, validationErrors)
+}
+
+// applyMinionTimeoutFlags applies and validates timeout-related command line flags
+func applyMinionTimeoutFlags(config *MinionConfig, flags *minionFlagValues, validationErrors *[]error) {
+	timeoutValidations := []struct {
+		name     string
+		value    int
+		target   *int
+		min, max int
+	}{
+		{"connect-timeout", *flags.connectTimeout, &config.ConnectTimeout, 1, 300},
+		{"initial-reconnect-delay", *flags.initialReconnectDelay, &config.InitialReconnectDelay, 1, 3600},
+		{"max-reconnect-delay", *flags.maxReconnectDelay, &config.MaxReconnectDelay, 1, 3600},
+		{"heartbeat-interval", *flags.heartbeatInterval, &config.HeartbeatInterval, 5, 300},
+		{"default-shell-timeout", *flags.defaultShellTimeout, &config.DefaultShellTimeout, 5, 300},
+		{"stream-timeout", *flags.streamTimeout, &config.StreamTimeout, 10, 300},
 	}
 
-	if heartbeat, err := loader.GetIntInRange("HEARTBEAT_INTERVAL", config.HeartbeatInterval, 5, 300); err != nil {
-		validationErrors = append(validationErrors, err)
-	} else {
-		config.HeartbeatInterval = heartbeat
+	for _, tv := range timeoutValidations {
+		if tv.value < tv.min || tv.value > tv.max {
+			*validationErrors = append(*validationErrors, ValidationError{
+				Field:   tv.name,
+				Value:   strconv.Itoa(tv.value),
+				Message: fmt.Sprintf("must be between %d and %d seconds", tv.min, tv.max),
+			})
+		} else {
+			*tv.target = tv.value
+		}
 	}
+}
 
-	if shellTimeout, err := loader.GetIntInRange("DEFAULT_SHELL_TIMEOUT", config.DefaultShellTimeout, 5, 300); err != nil {
-		validationErrors = append(validationErrors, err)
-	} else {
-		config.DefaultShellTimeout = shellTimeout
-	}
-
-	if streamTimeout, err := loader.GetIntInRange("STREAM_TIMEOUT", config.StreamTimeout, 10, 300); err != nil {
-		validationErrors = append(validationErrors, err)
-	} else {
-		config.StreamTimeout = streamTimeout
-	}
-
-	// Parse command line flags (highest priority)
-	serverAddr := flag.String("server", config.ServerAddr, "Nexus server address")
-	id := flag.String("id", config.ID, "Minion ID (optional, will be generated if not provided)")
-	debug := flag.Bool("debug", config.Debug, "Enable debug mode")
-	connectTimeout := flag.Int("connect-timeout", config.ConnectTimeout, "Connection timeout in seconds")
-	initialReconnectDelay := flag.Int("initial-reconnect-delay", config.InitialReconnectDelay, "Initial reconnection delay in seconds (exponential backoff starting point)")
-	maxReconnectDelay := flag.Int("max-reconnect-delay", config.MaxReconnectDelay, "Maximum reconnection delay in seconds (exponential backoff cap)")
-	heartbeatInterval := flag.Int("heartbeat-interval", config.HeartbeatInterval, "Heartbeat interval in seconds")
-	defaultShellTimeout := flag.Int("default-shell-timeout", config.DefaultShellTimeout, "Default timeout for shell command execution in seconds")
-	streamTimeout := flag.Int("stream-timeout", config.StreamTimeout, "Timeout for stream operations in seconds")
-
-	flag.Parse()
-
-	// Apply and validate command line flags
-	// For backward compatibility, still accept host:port format in command line flags
-	if err := loader.ValidateNetworkAddress("server", *serverAddr); err != nil {
-		validationErrors = append(validationErrors, err)
-	} else {
-		config.ServerAddr = *serverAddr
-	}
-
-	config.ID = *id
-	config.Debug = *debug
-
-	if *connectTimeout < 1 || *connectTimeout > 300 {
-		validationErrors = append(validationErrors, ValidationError{
-			Field:   "connect-timeout",
-			Value:   strconv.Itoa(*connectTimeout),
-			Message: "must be between 1 and 300 seconds",
-		})
-	} else {
-		config.ConnectTimeout = *connectTimeout
-	}
-
-	if *initialReconnectDelay < 1 || *initialReconnectDelay > 3600 {
-		validationErrors = append(validationErrors, ValidationError{
-			Field:   "initial-reconnect-delay",
-			Value:   strconv.Itoa(*initialReconnectDelay),
-			Message: "must be between 1 and 3600 seconds",
-		})
-	} else {
-		config.InitialReconnectDelay = *initialReconnectDelay
-	}
-
-	if *maxReconnectDelay < 1 || *maxReconnectDelay > 3600 {
-		validationErrors = append(validationErrors, ValidationError{
-			Field:   "max-reconnect-delay",
-			Value:   strconv.Itoa(*maxReconnectDelay),
-			Message: "must be between 1 and 3600 seconds",
-		})
-	} else {
-		config.MaxReconnectDelay = *maxReconnectDelay
-	}
-
-	if *heartbeatInterval < 5 || *heartbeatInterval > 300 {
-		validationErrors = append(validationErrors, ValidationError{
-			Field:   "heartbeat-interval",
-			Value:   strconv.Itoa(*heartbeatInterval),
-			Message: "must be between 5 and 300 seconds",
-		})
-	} else {
-		config.HeartbeatInterval = *heartbeatInterval
-	}
-
-	if *defaultShellTimeout < 5 || *defaultShellTimeout > 300 {
-		validationErrors = append(validationErrors, ValidationError{
-			Field:   "default-shell-timeout",
-			Value:   strconv.Itoa(*defaultShellTimeout),
-			Message: "must be between 5 and 300 seconds",
-		})
-	} else {
-		config.DefaultShellTimeout = *defaultShellTimeout
-	}
-
-	if *streamTimeout < 10 || *streamTimeout > 300 {
-		validationErrors = append(validationErrors, ValidationError{
-			Field:   "stream-timeout",
-			Value:   strconv.Itoa(*streamTimeout),
-			Message: "must be between 10 and 300 seconds",
-		})
-	} else {
-		config.StreamTimeout = *streamTimeout
-	}
-
-	// Validate that initial delay is not greater than max delay
+// validateMinionConfigConsistency performs consistency validations
+func validateMinionConfigConsistency(config *MinionConfig, validationErrors *[]error) {
 	if config.InitialReconnectDelay > config.MaxReconnectDelay {
-		validationErrors = append(validationErrors, ValidationError{
+		*validationErrors = append(*validationErrors, ValidationError{
 			Field:   "reconnect-delays",
 			Value:   fmt.Sprintf("initial=%d, max=%d", config.InitialReconnectDelay, config.MaxReconnectDelay),
 			Message: "initial reconnect delay cannot be greater than max reconnect delay",
 		})
 	}
+}
 
-	// Return validation errors if any
+// finalizeMinionConfig finalizes the configuration and returns errors if any
+func finalizeMinionConfig(config *MinionConfig, validationErrors []error) (*MinionConfig, error) {
 	if len(validationErrors) > 0 {
 		var errMsg strings.Builder
 		errMsg.WriteString("Configuration validation failed:\n")

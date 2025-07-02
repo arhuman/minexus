@@ -29,7 +29,6 @@ func (p *CommandParser) ParseCommand(args []string) (*ParsedCommand, error) {
 		return nil, fmt.Errorf("missing command arguments")
 	}
 
-
 	// New syntax: command-send <target-type> [target-specifier] <command>
 	var req pb.CommandRequest
 	var commandStart int
@@ -99,7 +98,6 @@ func (p *CommandParser) ParseCommand(args []string) (*ParsedCommand, error) {
 		CommandType: cmdType,
 	}, nil
 }
-
 
 // parseCommandAndType determines the command type and formats the payload
 func (p *CommandParser) parseCommandAndType(args []string) (string, pb.CommandType) {

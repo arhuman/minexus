@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	pb "github.com/arhuman/minexus/protogen"
 	"go.uber.org/zap"
 )
 
@@ -50,120 +51,6 @@ func createTestExecutionContext() *ExecutionContext {
 	ctx := context.Background()
 
 	return NewExecutionContext(ctx, logger, &atom, "test-minion", "test-cmd-123")
-}
-
-func TestDockerComposePSCommand(t *testing.T) {
-	tests := []struct {
-		name        string
-		payload     string
-		setupDir    func(t *testing.T) string
-		expectError bool
-		errorMsg    string
-	}{
-		{
-			name:        "Valid path with simple syntax",
-			payload:     "docker-compose:ps " + setupTestDir(t),
-			setupDir:    setupTestDir,
-			expectError: false,
-		},
-		{
-			name:        "Valid path with JSON syntax",
-			payload:     `{"command": "ps", "path": "` + setupTestDir(t) + `"}`,
-			setupDir:    setupTestDir,
-			expectError: false,
-		},
-		{
-			name:        "Missing path",
-			payload:     "docker-compose:ps",
-			setupDir:    setupTestDir,
-			expectError: true,
-			errorMsg:    "path is required",
-		},
-		{
-			name:        "Invalid JSON",
-			payload:     `{"command": "ps", "path":`,
-			setupDir:    setupTestDir,
-			expectError: true,
-			errorMsg:    "invalid JSON format",
-		},
-		{
-			name:        "Nonexistent path",
-			payload:     "docker-compose:ps /nonexistent/path",
-			setupDir:    setupTestDir,
-			expectError: true,
-			errorMsg:    "path does not exist",
-		},
-		{
-			name:        "Path without docker-compose file",
-			payload:     "docker-compose:ps " + setupInvalidTestDir(t),
-			setupDir:    setupInvalidTestDir,
-			expectError: true,
-			errorMsg:    "no docker-compose.yml",
-		},
-		{
-			name:        "Empty payload",
-			payload:     "",
-			setupDir:    setupTestDir,
-			expectError: true,
-			errorMsg:    "invalid payload format",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cmd := NewDockerComposePSCommand()
-			ctx := createTestExecutionContext()
-
-			// Setup test directory if needed
-			var testDir string
-			if tt.setupDir != nil {
-				testDir = tt.setupDir(t)
-				// Replace placeholder in payload with actual test directory
-				if tt.payload == "docker-compose:ps "+setupTestDir(t) {
-					tt.payload = "docker-compose:ps " + testDir
-				} else if tt.payload == `{"command": "ps", "path": "`+setupTestDir(t)+`"}` {
-					tt.payload = `{"command": "ps", "path": "` + testDir + `"}`
-				} else if tt.payload == "docker-compose:ps "+setupInvalidTestDir(t) {
-					tt.payload = "docker-compose:ps " + testDir
-				}
-			}
-
-			result, err := cmd.Execute(ctx, tt.payload)
-
-			if tt.expectError {
-				if err != nil {
-					t.Logf("Expected error occurred: %v", err)
-				}
-				if result != nil && result.ExitCode == 0 {
-					t.Error("Expected command to fail but it succeeded")
-				}
-				if tt.errorMsg != "" && result != nil && result.Stderr != "" {
-					if result.Stderr != tt.errorMsg && !containsIgnoreCase(result.Stderr, tt.errorMsg) {
-						t.Logf("Expected error message to contain '%s', got '%s'", tt.errorMsg, result.Stderr)
-					}
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Unexpected error: %v", err)
-				}
-				if result == nil {
-					t.Error("Expected result but got nil")
-				} else if result.ExitCode != 0 {
-					t.Errorf("Expected success (exit code 0) but got %d. Stderr: %s", result.ExitCode, result.Stderr)
-				}
-			}
-
-			// Verify result structure
-			if result != nil {
-				if result.CommandId != ctx.CommandID {
-					t.Errorf("Expected command ID %s, got %s", ctx.CommandID, result.CommandId)
-				}
-				if result.MinionId != ctx.MinionID {
-					t.Errorf("Expected minion ID %s, got %s", ctx.MinionID, result.MinionId)
-				}
-			}
-		})
-	}
 }
 
 func TestDockerComposeUpCommand(t *testing.T) {
@@ -553,7 +440,7 @@ func TestGetComposeFile(t *testing.T) {
 	testDir3 := t.TempDir()
 	ymlFile := filepath.Join(testDir3, "docker-compose.yml")
 	yamlFile3 := filepath.Join(testDir3, "docker-compose.yaml")
-	
+
 	err = os.WriteFile(ymlFile, []byte("version: '3.8'"), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create yml file: %v", err)
@@ -579,19 +466,19 @@ func TestDockerComposeCommandsMetadata(t *testing.T) {
 
 	for _, cmd := range commands {
 		metadata := cmd.Metadata()
-		
+
 		if metadata.Name == "" {
 			t.Error("Command name should not be empty")
 		}
-		
+
 		if metadata.Category != "docker" {
 			t.Errorf("Expected category 'docker', got '%s'", metadata.Category)
 		}
-		
+
 		if metadata.Description == "" {
 			t.Error("Command description should not be empty")
 		}
-		
+
 		if metadata.Usage == "" {
 			t.Error("Command usage should not be empty")
 		}
@@ -612,3 +499,202 @@ func replaceIgnoreCase(s, old, new string) string {
 	return strings.ReplaceAll(s, old, new)
 }
 
+func TestDockerComposePSCommand2(t *testing.T) {
+	tests := createDockerComposePSTestCases()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := NewDockerComposePSCommand()
+			ctx := createTestExecutionContext()
+
+			// Setup test directory and update payload
+			payload := prepareTestPayload(t, tt)
+
+			// Execute command
+			result, err := cmd.Execute(ctx, payload)
+
+			// Validate results
+			validateDockerComposePSResult(t, tt, result, err, ctx)
+		})
+	}
+}
+
+// createDockerComposePSTestCases creates the test cases for docker compose ps command
+func createDockerComposePSTestCases() []dockerComposePSTestCase {
+	return []dockerComposePSTestCase{
+		{
+			name:        "Valid path with simple syntax",
+			payload:     "docker-compose:ps ",
+			setupDir:    setupTestDir,
+			usesTestDir: true,
+			expectError: false,
+		},
+		{
+			name:        "Valid path with JSON syntax",
+			payload:     `{"command": "ps", "path": ""}`,
+			setupDir:    setupTestDir,
+			usesTestDir: true,
+			expectError: false,
+		},
+		{
+			name:        "Missing path",
+			payload:     "docker-compose:ps",
+			setupDir:    setupTestDir,
+			expectError: true,
+			errorMsg:    "path is required",
+		},
+		{
+			name:        "Invalid JSON",
+			payload:     `{"command": "ps", "path":`,
+			setupDir:    setupTestDir,
+			expectError: true,
+			errorMsg:    "invalid JSON format",
+		},
+		{
+			name:        "Nonexistent path",
+			payload:     "docker-compose:ps /nonexistent/path",
+			setupDir:    setupTestDir,
+			expectError: true,
+			errorMsg:    "path does not exist",
+		},
+		{
+			name:           "Path without docker-compose file",
+			payload:        "docker-compose:ps ",
+			setupDir:       setupInvalidTestDir,
+			usesInvalidDir: true,
+			expectError:    true,
+			errorMsg:       "no docker-compose.yml",
+		},
+		{
+			name:        "Empty payload",
+			payload:     "",
+			setupDir:    setupTestDir,
+			expectError: true,
+			errorMsg:    "invalid payload format",
+		},
+	}
+}
+
+// dockerComposePSTestCase represents a test case for docker compose PS command
+type dockerComposePSTestCase struct {
+	name           string
+	payload        string
+	setupDir       func(t *testing.T) string
+	usesTestDir    bool
+	usesInvalidDir bool
+	expectError    bool
+	errorMsg       string
+}
+
+// prepareTestPayload sets up the test directory and prepares the payload
+func prepareTestPayload(t *testing.T, tt dockerComposePSTestCase) string {
+	if tt.setupDir == nil {
+		return tt.payload
+	}
+
+	testDir := tt.setupDir(t)
+	return buildPayloadWithTestDir(tt.payload, testDir, tt.usesTestDir, tt.usesInvalidDir)
+}
+
+// buildPayloadWithTestDir builds the payload with the actual test directory path
+func buildPayloadWithTestDir(payload, testDir string, usesTestDir, usesInvalidDir bool) string {
+	if usesTestDir {
+		return handleTestDirPayload(payload, testDir)
+	}
+	if usesInvalidDir {
+		return handleInvalidDirPayload(payload, testDir)
+	}
+	return payload
+}
+
+// handleTestDirPayload handles payloads that use the test directory
+func handleTestDirPayload(payload, testDir string) string {
+	if payload == "docker-compose:ps " {
+		return "docker-compose:ps " + testDir
+	}
+	if payload == `{"command": "ps", "path": ""}` {
+		return `{"command": "ps", "path": "` + testDir + `"}`
+	}
+	return payload
+}
+
+// handleInvalidDirPayload handles payloads that use the invalid directory
+func handleInvalidDirPayload(payload, testDir string) string {
+	if payload == "docker-compose:ps " {
+		return "docker-compose:ps " + testDir
+	}
+	return payload
+}
+
+// validateDockerComposePSResult validates the test results
+func validateDockerComposePSResult(t *testing.T, tt dockerComposePSTestCase, result *pb.CommandResult, err error, ctx *ExecutionContext) {
+	if tt.expectError {
+		validateExpectedError(t, tt, result, err)
+	} else {
+		validateExpectedSuccess(t, result, err)
+	}
+
+	// Validate result structure
+	validateResultStructure(t, result, ctx)
+}
+
+// validateExpectedError validates when an error is expected
+func validateExpectedError(t *testing.T, tt dockerComposePSTestCase, result *pb.CommandResult, err error) {
+	if err != nil {
+		t.Logf("Expected error occurred: %v", err)
+	}
+	if result != nil && result.ExitCode == 0 {
+		t.Error("Expected command to fail but it succeeded")
+	}
+	if shouldCheckErrorMessage(tt, result) {
+		checkErrorMessage(t, tt.errorMsg, result.Stderr)
+	}
+}
+
+// validateExpectedSuccess validates when success is expected
+func validateExpectedSuccess(t *testing.T, result *pb.CommandResult, err error) {
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Error("Expected result but got nil")
+	} else if result.ExitCode != 0 {
+		t.Errorf("Expected success (exit code 0) but got %d. Stderr: %s", result.ExitCode, result.Stderr)
+	}
+}
+
+// shouldCheckErrorMessage determines if we should check the error message
+func shouldCheckErrorMessage(tt dockerComposePSTestCase, result *pb.CommandResult) bool {
+	return tt.errorMsg != "" && result != nil && result.Stderr != ""
+}
+
+// checkErrorMessage checks if the error message contains the expected text
+func checkErrorMessage(t *testing.T, expectedMsg, actualMsg string) {
+	if actualMsg != expectedMsg && !containsIgnoreCase(actualMsg, expectedMsg) {
+		t.Logf("Expected error message to contain '%s', got '%s'", expectedMsg, actualMsg)
+	}
+}
+
+// validateResultStructure validates the basic structure of the result
+func validateResultStructure(t *testing.T, result *pb.CommandResult, ctx *ExecutionContext) {
+	if result == nil {
+		return
+	}
+
+	validateCommandID(t, result, ctx)
+	validateMinionID(t, result, ctx)
+}
+
+// validateCommandID validates the command ID in the result
+func validateCommandID(t *testing.T, result *pb.CommandResult, ctx *ExecutionContext) {
+	if result.CommandId != ctx.CommandID {
+		t.Errorf("Expected command ID %s, got %s", ctx.CommandID, result.CommandId)
+	}
+}
+
+// validateMinionID validates the minion ID in the result
+func validateMinionID(t *testing.T, result *pb.CommandResult, ctx *ExecutionContext) {
+	if result.MinionId != ctx.MinionID {
+		t.Errorf("Expected minion ID %s, got %s", ctx.MinionID, result.MinionId)
+	}
+}

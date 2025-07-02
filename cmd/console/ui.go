@@ -26,7 +26,7 @@ type UIManager struct {
 func NewUIManager(logger *zap.Logger, registry *command.Registry) *UIManager {
 	logger, start := logging.FuncLogger(logger, "NewUIManager")
 	defer logging.FuncExit(logger, start)
-	
+
 	ui := &UIManager{
 		logger:   logger,
 		registry: registry,
@@ -41,7 +41,7 @@ func NewUIManager(logger *zap.Logger, registry *command.Registry) *UIManager {
 func (ui *UIManager) setupReadline() {
 	logger, start := logging.FuncLogger(ui.logger, "UIManager.setupReadline")
 	defer logging.FuncExit(logger, start)
-	
+
 	// Check if we're in a test environment to avoid race conditions
 	// Test environments often don't have proper TTY and cause issues with readline
 	if ui.isTestEnvironment() {

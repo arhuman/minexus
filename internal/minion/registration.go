@@ -12,7 +12,7 @@ import (
 	pb "github.com/arhuman/minexus/protogen"
 
 	"go.uber.org/zap"
-	
+
 	"github.com/arhuman/minexus/internal/logging"
 )
 
@@ -29,7 +29,7 @@ type registrationManager struct {
 func NewRegistrationManager(id string, service pb.MinionServiceClient, connMgr ConnectionManager, logger *zap.Logger) *registrationManager {
 	logger, start := logging.FuncLogger(logger, "NewRegistrationManager")
 	defer logging.FuncExit(logger, start)
-	
+
 	return &registrationManager{
 		id:            id,
 		service:       service,
@@ -42,7 +42,7 @@ func NewRegistrationManager(id string, service pb.MinionServiceClient, connMgr C
 func (rm *registrationManager) Register(ctx context.Context, hostInfo *pb.HostInfo) (*pb.RegisterResponse, error) {
 	logger, start := logging.FuncLogger(rm.logger, "registrationManager.Register")
 	defer logging.FuncExit(logger, start)
-	
+
 	logger.Debug("Creating host info for registration")
 	if hostInfo == nil {
 		var err error
@@ -82,7 +82,7 @@ func (rm *registrationManager) Register(ctx context.Context, hostInfo *pb.HostIn
 func (rm *registrationManager) PeriodicRegister(ctx context.Context, interval time.Duration) error {
 	logger, start := logging.FuncLogger(rm.logger, "registrationManager.PeriodicRegister")
 	defer logging.FuncExit(logger, start)
-	
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 

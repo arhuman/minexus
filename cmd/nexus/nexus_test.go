@@ -220,7 +220,6 @@ func TestConfigurationLoading(t *testing.T) {
 		}
 	})
 
-
 	// Test configuration logging (should not panic)
 	t.Run("configuration logging", func(t *testing.T) {
 		cfg := config.DefaultNexusConfig()
@@ -1126,204 +1125,291 @@ func TestMainFunctionParts(t *testing.T) {
 	// Test the exact logic from main function line by line
 
 	t.Run("version flag logic", func(t *testing.T) {
-		// Test the version flag checking logic from main
-		tests := []struct {
-			name       string
-			args       []string
-			shouldExit bool
-		}{
-			{
-				name:       "no args",
-				args:       []string{"nexus"},
-				shouldExit: false,
-			},
-			{
-				name:       "version flag --version",
-				args:       []string{"nexus", "--version"},
-				shouldExit: true,
-			},
-			{
-				name:       "version flag -v",
-				args:       []string{"nexus", "-v"},
-				shouldExit: true,
-			},
-			{
-				name:       "other flag",
-				args:       []string{"nexus", "--help"},
-				shouldExit: false,
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				// Test the version flag logic from main
-				shouldExit := len(tt.args) > 1 && (tt.args[1] == "--version" || tt.args[1] == "-v")
-
-				if shouldExit != tt.shouldExit {
-					t.Errorf("Expected shouldExit=%v, got %v", tt.shouldExit, shouldExit)
-				}
-
-				if shouldExit {
-					// Test version output
-					versionInfo := version.Info()
-					expectedOutput := fmt.Sprintf("Nexus %s\n", versionInfo)
-					if expectedOutput == "" {
-						t.Error("Expected version output to be non-empty")
-					}
-				}
-			})
-		}
+		testVersionFlagLogic(t)
 	})
 
 	t.Run("logger creation based on debug flag", func(t *testing.T) {
-		// Test the logger creation logic from main
-		tests := []struct {
-			name  string
-			debug bool
-		}{
-			{
-				name:  "debug logger",
-				debug: true,
-			},
-			{
-				name:  "production logger",
-				debug: false,
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				var logger *zap.Logger
-				var err error
-
-				// This mirrors the exact logic from main
-				if tt.debug {
-					logger, err = zap.NewDevelopment()
-				} else {
-					logger, err = zap.NewProduction()
-				}
-
-				if err != nil {
-					// Test the panic scenario from main
-					panicMsg := fmt.Sprintf("Failed to create logger: %v", err)
-					if panicMsg == "" {
-						t.Error("Expected panic message to be non-empty")
-					}
-				} else {
-					if logger == nil {
-						t.Error("Expected logger to be created")
-					}
-					defer logger.Sync()
-
-					// Test the logging that happens in main
-					logger.Info("Starting Nexus", zap.String("version", version.Component("Nexus")))
-				}
-			})
-		}
+		testLoggerCreation(t)
 	})
 
 	t.Run("server creation and shutdown", func(t *testing.T) {
-		// Test the server creation and shutdown logic from main
-		logger, _ := zap.NewDevelopment()
-		defer logger.Sync()
-
-		// Create configuration (like main does)
-		cfg := config.DefaultNexusConfig()
-
-		// Create server (like main does)
-		server, err := nexus.NewServer(cfg.DBConnectionString(), logger)
-		if err != nil {
-			// Test the fatal error scenario from main
-			errorMsg := fmt.Sprintf("Failed to create server: %v", err)
-			if errorMsg == "" {
-				t.Error("Expected error message to be non-empty")
-			}
-		} else {
-			// Test that server was created successfully
-			if server == nil {
-				t.Error("Expected server to be created")
-			}
-			// Test shutdown (like main does with defer)
-			server.Shutdown()
-		}
+		testServerCreationAndShutdown(t)
 	})
 
 	t.Run("listener creation", func(t *testing.T) {
-		// Test the listener creation logic from main
-		cfg := config.DefaultNexusConfig()
-		cfg.MinionPort = 0 // Use random port for testing
-
-		// Test listener creation (like main does)
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.MinionPort))
-		if err != nil {
-			// Test the fatal error scenario from main
-			errorMsg := fmt.Sprintf("Failed to listen: %v", err)
-			if errorMsg == "" {
-				t.Error("Expected error message to be non-empty")
-			}
-		} else {
-			if lis == nil {
-				t.Error("Expected listener to be created")
-			}
-			defer lis.Close()
-
-			// Test that we can get the address (like main logs)
-			addr := lis.Addr().String()
-			if addr == "" {
-				t.Error("Expected listener address to be non-empty")
-			}
-		}
+		testListenerCreation(t)
 	})
 
 	t.Run("grpc server with services", func(t *testing.T) {
-		// Test the complete gRPC server setup from main
-		logger, _ := zap.NewDevelopment()
-		defer logger.Sync()
-
-		cfg := config.DefaultNexusConfig()
-
-		// Create server
-		server, err := nexus.NewServer("", logger)
-		if err != nil {
-			t.Fatalf("Failed to create server: %v", err)
-		}
-		defer server.Shutdown()
-
-		// Create gRPC server (like main does)
-		s := grpc.NewServer(
-			grpc.MaxRecvMsgSize(cfg.MaxMsgSize),
-			grpc.MaxSendMsgSize(cfg.MaxMsgSize),
-		)
-
-		// Register services (like main does)
-		pb.RegisterMinionServiceServer(s, server)
-		pb.RegisterConsoleServiceServer(s, server)
-
-		// Register reflection (like main does)
-		reflection.Register(s)
-
-		// Test graceful stop (like main does)
-		s.GracefulStop()
+		testGRPCServerWithServices(t)
 	})
 
 	t.Run("signal handling setup", func(t *testing.T) {
-		// Test the signal handling setup from main
-		quit := make(chan os.Signal, 1)
-
-		// Test that we can set up signal notification
-		// Note: We don't actually call signal.Notify to avoid affecting the test process
-		// Since make() always returns a non-nil channel, we verify the channel properties
-
-		if cap(quit) != 1 {
-			t.Errorf("Expected signal channel capacity to be 1, got %d", cap(quit))
-		}
-
-		// Test signal types that main listens for
-		signals := []os.Signal{syscall.SIGINT, syscall.SIGTERM}
-		for _, sig := range signals {
-			if sig == nil {
-				t.Error("Expected signal to be non-nil")
-			}
-		}
+		testSignalHandlingSetup(t)
 	})
+}
+
+// testVersionFlagLogic tests the version flag checking logic from main
+func testVersionFlagLogic(t *testing.T) {
+	tests := getVersionFlagTestCases()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shouldExit := checkVersionFlag(tt.args)
+
+			if shouldExit != tt.shouldExit {
+				t.Errorf("Expected shouldExit=%v, got %v", tt.shouldExit, shouldExit)
+			}
+
+			if shouldExit {
+				validateVersionOutput(t)
+			}
+		})
+	}
+}
+
+// testLoggerCreation tests the logger creation logic from main
+func testLoggerCreation(t *testing.T) {
+	tests := getLoggerTestCases()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger, err := createLogger(tt.debug)
+			handleLoggerCreationResult(t, logger, err)
+		})
+	}
+}
+
+// testServerCreationAndShutdown tests the server creation and shutdown logic from main
+func testServerCreationAndShutdown(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+	defer logger.Sync()
+
+	cfg := config.DefaultNexusConfig()
+	server, err := nexus.NewServer(cfg.DBConnectionString(), logger)
+
+	handleServerCreationResult(t, server, err)
+}
+
+// testListenerCreation tests the listener creation logic from main
+func testListenerCreation(t *testing.T) {
+	cfg := config.DefaultNexusConfig()
+	cfg.MinionPort = 0 // Use random port for testing
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.MinionPort))
+	handleListenerCreationResult(t, lis, err)
+}
+
+// testGRPCServerWithServices tests the complete gRPC server setup from main
+func testGRPCServerWithServices(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+	defer logger.Sync()
+
+	cfg := config.DefaultNexusConfig()
+	server, err := nexus.NewServer("", logger)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server.Shutdown()
+
+	s := createGRPCServer(cfg)
+	registerGRPCServices(s, server)
+	s.GracefulStop()
+}
+
+// testSignalHandlingSetup tests the signal handling setup from main
+func testSignalHandlingSetup(t *testing.T) {
+	quit := make(chan os.Signal, 1)
+	validateSignalChannel(t, quit)
+	validateSignalTypes(t)
+}
+
+// versionFlagTestCase represents a test case for version flag logic
+type versionFlagTestCase struct {
+	name       string
+	args       []string
+	shouldExit bool
+}
+
+// loggerTestCase represents a test case for logger creation
+type loggerTestCase struct {
+	name  string
+	debug bool
+}
+
+// getVersionFlagTestCases returns test cases for version flag logic
+func getVersionFlagTestCases() []versionFlagTestCase {
+	return []versionFlagTestCase{
+		{
+			name:       "no args",
+			args:       []string{"nexus"},
+			shouldExit: false,
+		},
+		{
+			name:       "version flag --version",
+			args:       []string{"nexus", "--version"},
+			shouldExit: true,
+		},
+		{
+			name:       "version flag -v",
+			args:       []string{"nexus", "-v"},
+			shouldExit: true,
+		},
+		{
+			name:       "other flag",
+			args:       []string{"nexus", "--help"},
+			shouldExit: false,
+		},
+	}
+}
+
+// getLoggerTestCases returns test cases for logger creation
+func getLoggerTestCases() []loggerTestCase {
+	return []loggerTestCase{
+		{
+			name:  "debug logger",
+			debug: true,
+		},
+		{
+			name:  "production logger",
+			debug: false,
+		},
+	}
+}
+
+// checkVersionFlag checks if version flag is present in args
+func checkVersionFlag(args []string) bool {
+	return len(args) > 1 && (args[1] == "--version" || args[1] == "-v")
+}
+
+// validateVersionOutput validates the version output
+func validateVersionOutput(t *testing.T) {
+	versionInfo := version.Info()
+	expectedOutput := fmt.Sprintf("Nexus %s\n", versionInfo)
+	if expectedOutput == "" {
+		t.Error("Expected version output to be non-empty")
+	}
+}
+
+// createLogger creates a logger based on debug flag
+func createLogger(debug bool) (*zap.Logger, error) {
+	if debug {
+		return zap.NewDevelopment()
+	}
+	return zap.NewProduction()
+}
+
+// handleLoggerCreationResult handles the result of logger creation
+func handleLoggerCreationResult(t *testing.T, logger *zap.Logger, err error) {
+	if err != nil {
+		validateLoggerError(t, err)
+	} else {
+		validateLoggerSuccess(t, logger)
+	}
+}
+
+// validateLoggerError validates logger creation error scenario
+func validateLoggerError(t *testing.T, err error) {
+	panicMsg := fmt.Sprintf("Failed to create logger: %v", err)
+	if panicMsg == "" {
+		t.Error("Expected panic message to be non-empty")
+	}
+}
+
+// validateLoggerSuccess validates successful logger creation
+func validateLoggerSuccess(t *testing.T, logger *zap.Logger) {
+	if logger == nil {
+		t.Error("Expected logger to be created")
+	} else {
+		defer logger.Sync()
+		logger.Info("Starting Nexus", zap.String("version", version.Component("Nexus")))
+	}
+}
+
+// handleServerCreationResult handles the result of server creation
+func handleServerCreationResult(t *testing.T, server *nexus.Server, err error) {
+	if err != nil {
+		validateServerError(t, err)
+	} else {
+		validateServerSuccess(t, server)
+	}
+}
+
+// validateServerError validates server creation error scenario
+func validateServerError(t *testing.T, err error) {
+	errorMsg := fmt.Sprintf("Failed to create server: %v", err)
+	if errorMsg == "" {
+		t.Error("Expected error message to be non-empty")
+	}
+}
+
+// validateServerSuccess validates successful server creation
+func validateServerSuccess(t *testing.T, server *nexus.Server) {
+	if server == nil {
+		t.Error("Expected server to be created")
+	} else {
+		server.Shutdown()
+	}
+}
+
+// handleListenerCreationResult handles the result of listener creation
+func handleListenerCreationResult(t *testing.T, lis net.Listener, err error) {
+	if err != nil {
+		validateListenerError(t, err)
+	} else {
+		validateListenerSuccess(t, lis)
+	}
+}
+
+// validateListenerError validates listener creation error scenario
+func validateListenerError(t *testing.T, err error) {
+	errorMsg := fmt.Sprintf("Failed to listen: %v", err)
+	if errorMsg == "" {
+		t.Error("Expected error message to be non-empty")
+	}
+}
+
+// validateListenerSuccess validates successful listener creation
+func validateListenerSuccess(t *testing.T, lis net.Listener) {
+	if lis == nil {
+		t.Error("Expected listener to be created")
+	} else {
+		defer lis.Close()
+		addr := lis.Addr().String()
+		if addr == "" {
+			t.Error("Expected listener address to be non-empty")
+		}
+	}
+}
+
+// createGRPCServer creates a gRPC server with configuration
+func createGRPCServer(cfg *config.NexusConfig) *grpc.Server {
+	return grpc.NewServer(
+		grpc.MaxRecvMsgSize(cfg.MaxMsgSize),
+		grpc.MaxSendMsgSize(cfg.MaxMsgSize),
+	)
+}
+
+// registerGRPCServices registers services on the gRPC server
+func registerGRPCServices(s *grpc.Server, server *nexus.Server) {
+	pb.RegisterMinionServiceServer(s, server)
+	pb.RegisterConsoleServiceServer(s, server)
+	reflection.Register(s)
+}
+
+// validateSignalChannel validates the signal channel properties
+func validateSignalChannel(t *testing.T, quit chan os.Signal) {
+	if cap(quit) != 1 {
+		t.Errorf("Expected signal channel capacity to be 1, got %d", cap(quit))
+	}
+}
+
+// validateSignalTypes validates the signal types that main listens for
+func validateSignalTypes(t *testing.T) {
+	signals := []os.Signal{syscall.SIGINT, syscall.SIGTERM}
+	for _, sig := range signals {
+		if sig == nil {
+			t.Error("Expected signal to be non-nil")
+		}
+	}
 }

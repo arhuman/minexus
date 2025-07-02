@@ -178,150 +178,6 @@ func (d *DatabaseServiceImpl) UpdateCommandStatus(ctx context.Context, commandID
 	return nil
 }
 
-// StoreCommandResult persists command execution results to the database with transaction safety.
-func (d *DatabaseServiceImpl) StoreCommandResult(ctx context.Context, result *pb.CommandResult) error {
-	if d == nil || d.db == nil {
-		return fmt.Errorf("database service unavailable - cannot store command result for command %s", result.CommandId)
-	}
-
-	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.StoreCommandResult")
-	defer logging.FuncExit(logger, start)
-
-	// Use optimized retry settings (formerly test-only, now default)
-	maxRetries := 1                   // Optimized: reduced from 3 to 1 for faster execution
-	baseDelay := 1 * time.Millisecond // Optimized: reduced from 25ms to 1ms for minimal delay
-
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		if attempt > 0 {
-			delay := time.Duration(attempt*attempt) * baseDelay
-			logger.Warn("HARDENING: Retrying result storage after delay",
-				zap.String("command_id", result.CommandId),
-				zap.Int("attempt", attempt+1),
-				zap.Duration("delay", delay))
-			time.Sleep(delay)
-		}
-
-		// Add transaction boundaries for atomic operations
-		tx, err := d.db.BeginTx(ctx, nil)
-		if err != nil {
-			logger.Error("HARDENING: Failed to begin transaction for result storage",
-				zap.String("command_id", result.CommandId),
-				zap.Int("attempt", attempt+1),
-				zap.Error(err))
-			if attempt == maxRetries-1 {
-				return fmt.Errorf("failed to begin transaction for result storage after %d attempts: %v", maxRetries, err)
-			}
-			continue
-		}
-
-		// Check if command exists in commands table first
-		var cmdExists bool
-		err = tx.QueryRowContext(ctx,
-			"SELECT EXISTS(SELECT 1 FROM commands WHERE id = $1 AND host_id = $2)",
-			result.CommandId, result.MinionId).Scan(&cmdExists)
-
-		if err != nil {
-			tx.Rollback()
-			logger.Error("HARDENING: Failed to check if command exists",
-				zap.String("command_id", result.CommandId),
-				zap.String("minion_id", result.MinionId),
-				zap.Int("attempt", attempt+1),
-				zap.Error(err))
-			if attempt == maxRetries-1 {
-				return fmt.Errorf("failed to check command existence after %d attempts: %v", maxRetries, err)
-			}
-			continue
-		}
-
-		logger.Info("HARDENING: Command existence check in transaction",
-			zap.String("command_id", result.CommandId),
-			zap.String("minion_id", result.MinionId),
-			zap.Bool("exists_in_commands_table", cmdExists),
-			zap.Int("attempt", attempt+1))
-
-		// DIAGNOSTIC: If command doesn't exist, check what commands DO exist
-		if !cmdExists {
-			var existingCommands []string
-			rows, err := tx.QueryContext(ctx, "SELECT id FROM commands LIMIT 10")
-			if err == nil {
-				for rows.Next() {
-					var cmdID string
-					if rows.Scan(&cmdID) == nil {
-						existingCommands = append(existingCommands, cmdID)
-					}
-				}
-				rows.Close()
-			}
-			logger.Error("DIAGNOSTIC: Command not found in database - this may cause 0 results",
-				zap.String("target_command_id", result.CommandId),
-				zap.String("target_minion_id", result.MinionId),
-				zap.Strings("existing_command_ids", existingCommands),
-				zap.Int("existing_count", len(existingCommands)))
-		}
-
-		// Insert the result within transaction
-		query := "INSERT INTO command_results (command_id, minion_id, exit_code, stdout, stderr, timestamp) VALUES ($1, $2, $3, $4, $5, $6)"
-		_, err = tx.ExecContext(ctx, query,
-			result.CommandId, result.MinionId, result.ExitCode, result.Stdout, result.Stderr, time.Unix(result.Timestamp, 0))
-
-		if err != nil {
-			tx.Rollback()
-			logger.Error("HARDENING: Failed to insert command result in transaction",
-				zap.String("command_id", result.CommandId),
-				zap.String("minion_id", result.MinionId),
-				zap.String("query", query),
-				zap.String("error_type", fmt.Sprintf("%T", err)),
-				zap.Int("attempt", attempt+1),
-				zap.Error(err))
-			if attempt == maxRetries-1 {
-				return fmt.Errorf("failed to store command result after %d attempts: %v", maxRetries, err)
-			}
-			continue
-		}
-
-		// Update command status to COMPLETED within same transaction
-		_, err = tx.ExecContext(ctx,
-			"UPDATE commands SET status = $1 WHERE id = $2 AND host_id = $3",
-			"COMPLETED", result.CommandId, result.MinionId)
-
-		if err != nil {
-			tx.Rollback()
-			logger.Error("HARDENING: Failed to update command status in transaction",
-				zap.String("command_id", result.CommandId),
-				zap.String("minion_id", result.MinionId),
-				zap.Int("attempt", attempt+1),
-				zap.Error(err))
-			if attempt == maxRetries-1 {
-				return fmt.Errorf("failed to update command status after %d attempts: %v", maxRetries, err)
-			}
-			continue
-		}
-
-		// Commit the transaction
-		if err = tx.Commit(); err != nil {
-			logger.Error("HARDENING: Failed to commit result storage transaction",
-				zap.String("command_id", result.CommandId),
-				zap.String("minion_id", result.MinionId),
-				zap.Int("attempt", attempt+1),
-				zap.Error(err))
-			if attempt == maxRetries-1 {
-				return fmt.Errorf("failed to commit result storage transaction after %d attempts: %v", maxRetries, err)
-			}
-			continue
-		}
-
-		logger.Info("HARDENING: Successfully stored command result with transaction safety",
-			zap.String("command_id", result.CommandId),
-			zap.String("minion_id", result.MinionId),
-			zap.Int32("exit_code", result.ExitCode),
-			zap.Int("attempt", attempt+1))
-		return nil
-	}
-
-	// This should never be reached due to the return statements above, but adding for safety
-	return fmt.Errorf("failed to store command result after %d attempts", maxRetries)
-}
-
 // GetCommandResults retrieves all results for a specific command.
 func (d *DatabaseServiceImpl) GetCommandResults(ctx context.Context, commandID string) ([]*pb.CommandResult, error) {
 	if d == nil {
@@ -444,6 +300,177 @@ func (d *DatabaseServiceImpl) updateHostTags(ctx context.Context, minionID strin
 
 	logger.Debug("Host tags updated successfully",
 		zap.String("minion_id", minionID))
+
+	return nil
+}
+
+// StoreCommandResult persists command execution results to the database with transaction safety.
+func (d *DatabaseServiceImpl) StoreCommandResult(ctx context.Context, result *pb.CommandResult) error {
+	if d == nil || d.db == nil {
+		return fmt.Errorf("database service unavailable - cannot store command result for command %s", result.CommandId)
+	}
+
+	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.StoreCommandResult")
+	defer logging.FuncExit(logger, start)
+
+	// Use optimized retry settings (formerly test-only, now default)
+	maxRetries := 1
+	baseDelay := 1 * time.Millisecond
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if err := d.storeResultWithRetry(ctx, result, attempt, baseDelay, logger); err != nil {
+			if attempt == maxRetries-1 {
+				return fmt.Errorf("failed to store command result after %d attempts: %v", maxRetries, err)
+			}
+			continue
+		}
+		return nil
+	}
+
+	return fmt.Errorf("failed to store command result after %d attempts", maxRetries)
+}
+
+// storeResultWithRetry handles a single attempt to store the command result
+func (d *DatabaseServiceImpl) storeResultWithRetry(ctx context.Context, result *pb.CommandResult, attempt int, baseDelay time.Duration, logger *zap.Logger) error {
+	if attempt > 0 {
+		delay := time.Duration(attempt*attempt) * baseDelay
+		logger.Warn("HARDENING: Retrying result storage after delay",
+			zap.String("command_id", result.CommandId),
+			zap.Int("attempt", attempt+1),
+			zap.Duration("delay", delay))
+		time.Sleep(delay)
+	}
+
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		logger.Error("HARDENING: Failed to begin transaction for result storage",
+			zap.String("command_id", result.CommandId),
+			zap.Int("attempt", attempt+1),
+			zap.Error(err))
+		return err
+	}
+	defer tx.Rollback() // Will be a no-op if transaction is committed
+
+	return d.executeStoreTransaction(ctx, tx, result, attempt, logger)
+}
+
+// executeStoreTransaction executes the complete store transaction
+func (d *DatabaseServiceImpl) executeStoreTransaction(ctx context.Context, tx *sql.Tx, result *pb.CommandResult, attempt int, logger *zap.Logger) error {
+	if err := d.checkCommandExists(ctx, tx, result, attempt, logger); err != nil {
+		return err
+	}
+
+	if err := d.insertCommandResult(ctx, tx, result, attempt, logger); err != nil {
+		return err
+	}
+
+	if err := d.updateCommandStatusInTx(ctx, tx, result, attempt, logger); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		logger.Error("HARDENING: Failed to commit result storage transaction",
+			zap.String("command_id", result.CommandId),
+			zap.String("minion_id", result.MinionId),
+			zap.Int("attempt", attempt+1),
+			zap.Error(err))
+		return err
+	}
+
+	logger.Info("HARDENING: Successfully stored command result with transaction safety",
+		zap.String("command_id", result.CommandId),
+		zap.String("minion_id", result.MinionId),
+		zap.Int32("exit_code", result.ExitCode),
+		zap.Int("attempt", attempt+1))
+	return nil
+}
+
+// checkCommandExists verifies that the command exists in the commands table
+func (d *DatabaseServiceImpl) checkCommandExists(ctx context.Context, tx *sql.Tx, result *pb.CommandResult, attempt int, logger *zap.Logger) error {
+	var cmdExists bool
+	err := tx.QueryRowContext(ctx,
+		"SELECT EXISTS(SELECT 1 FROM commands WHERE id = $1 AND host_id = $2)",
+		result.CommandId, result.MinionId).Scan(&cmdExists)
+
+	if err != nil {
+		logger.Error("HARDENING: Failed to check if command exists",
+			zap.String("command_id", result.CommandId),
+			zap.String("minion_id", result.MinionId),
+			zap.Int("attempt", attempt+1),
+			zap.Error(err))
+		return err
+	}
+
+	logger.Info("HARDENING: Command existence check in transaction",
+		zap.String("command_id", result.CommandId),
+		zap.String("minion_id", result.MinionId),
+		zap.Bool("exists_in_commands_table", cmdExists),
+		zap.Int("attempt", attempt+1))
+
+	if !cmdExists {
+		d.logCommandDiagnostics(ctx, tx, result, logger)
+	}
+
+	return nil
+}
+
+// logCommandDiagnostics logs diagnostic information when command is not found
+func (d *DatabaseServiceImpl) logCommandDiagnostics(ctx context.Context, tx *sql.Tx, result *pb.CommandResult, logger *zap.Logger) {
+	var existingCommands []string
+	rows, err := tx.QueryContext(ctx, "SELECT id FROM commands LIMIT 10")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cmdID string
+		if rows.Scan(&cmdID) == nil {
+			existingCommands = append(existingCommands, cmdID)
+		}
+	}
+
+	logger.Error("DIAGNOSTIC: Command not found in database - this may cause 0 results",
+		zap.String("target_command_id", result.CommandId),
+		zap.String("target_minion_id", result.MinionId),
+		zap.Strings("existing_command_ids", existingCommands),
+		zap.Int("existing_count", len(existingCommands)))
+}
+
+// insertCommandResult inserts the command result into the database
+func (d *DatabaseServiceImpl) insertCommandResult(ctx context.Context, tx *sql.Tx, result *pb.CommandResult, attempt int, logger *zap.Logger) error {
+	query := "INSERT INTO command_results (command_id, minion_id, exit_code, stdout, stderr, timestamp) VALUES ($1, $2, $3, $4, $5, $6)"
+	_, err := tx.ExecContext(ctx, query,
+		result.CommandId, result.MinionId, result.ExitCode, result.Stdout, result.Stderr, time.Unix(result.Timestamp, 0))
+
+	if err != nil {
+		logger.Error("HARDENING: Failed to insert command result in transaction",
+			zap.String("command_id", result.CommandId),
+			zap.String("minion_id", result.MinionId),
+			zap.String("query", query),
+			zap.String("error_type", fmt.Sprintf("%T", err)),
+			zap.Int("attempt", attempt+1),
+			zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
+// updateCommandStatusInTx updates the command status within a transaction
+func (d *DatabaseServiceImpl) updateCommandStatusInTx(ctx context.Context, tx *sql.Tx, result *pb.CommandResult, attempt int, logger *zap.Logger) error {
+	_, err := tx.ExecContext(ctx,
+		"UPDATE commands SET status = $1 WHERE id = $2 AND host_id = $3",
+		"COMPLETED", result.CommandId, result.MinionId)
+
+	if err != nil {
+		logger.Error("HARDENING: Failed to update command status in transaction",
+			zap.String("command_id", result.CommandId),
+			zap.String("minion_id", result.MinionId),
+			zap.Int("attempt", attempt+1),
+			zap.Error(err))
+		return err
+	}
 
 	return nil
 }

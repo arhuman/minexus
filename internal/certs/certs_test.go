@@ -7,206 +7,156 @@ import (
 )
 
 func TestCertificateGeneration(t *testing.T) {
-	// Test CA certificate
 	t.Run("CA Certificate", func(t *testing.T) {
-		if len(CAPem) == 0 {
-			t.Fatal("CA certificate is empty")
-		}
-
-		block, _ := pem.Decode(CAPem)
-		if block == nil {
-			t.Fatal("Failed to decode CA certificate PEM")
-		}
-
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			t.Fatalf("Failed to parse CA certificate: %v", err)
-		}
-
-		if cert.Subject.CommonName != "Minexus-test CA" {
-			t.Errorf("Expected CA CN 'Minexus-test CA', got '%s'", cert.Subject.CommonName)
-		}
-
-		if !cert.IsCA {
-			t.Error("CA certificate should have IsCA=true")
-		}
-
-		// Check for CA certificate signing capability through Basic Constraints
-		// Modern certificates may not have explicit KeyUsage for cert signing
-		if !cert.IsCA {
-			t.Error("CA certificate should have IsCA=true which indicates cert signing capability")
-		}
+		testCACertificate(t)
 	})
 
-	// Test Server certificate
 	t.Run("Server Certificate", func(t *testing.T) {
-		if len(CertPEM) == 0 {
-			t.Fatal("Server certificate is empty")
-		}
-
-		block, _ := pem.Decode(CertPEM)
-		if block == nil {
-			t.Fatal("Failed to decode server certificate PEM")
-		}
-
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			t.Fatalf("Failed to parse server certificate: %v", err)
-		}
-
-		if cert.Subject.CommonName != "nexus" {
-			t.Errorf("Expected server CN 'nexus', got '%s'", cert.Subject.CommonName)
-		}
-
-		if cert.IsCA {
-			t.Error("Server certificate should have IsCA=false")
-		}
-
-		// Check for server authentication usage
-		hasServerAuth := false
-		for _, usage := range cert.ExtKeyUsage {
-			if usage == x509.ExtKeyUsageServerAuth {
-				hasServerAuth = true
-				break
-			}
-		}
-		if !hasServerAuth {
-			t.Error("Server certificate should have server authentication usage")
-		}
-
-		// Check SANs
-		hasLocalhost := false
-		hasNexus := false
-		for _, dns := range cert.DNSNames {
-			if dns == "localhost" {
-				hasLocalhost = true
-			}
-			if dns == "nexus" {
-				hasNexus = true
-			}
-		}
-		if !hasLocalhost {
-			t.Error("Server certificate should include 'localhost' in SANs")
-		}
-		if !hasNexus {
-			t.Error("Server certificate should include 'nexus' in SANs")
-		}
+		testServerCertificate(t)
 	})
 
-	// Test Server private key
 	t.Run("Server Private Key", func(t *testing.T) {
-		if len(KeyPEM) == 0 {
-			t.Fatal("Server private key is empty")
-		}
-
-		block, _ := pem.Decode(KeyPEM)
-		if block == nil {
-			t.Fatal("Failed to decode server private key PEM")
-		}
-
-		// Accept both modern PKCS#8 and legacy PKCS#1 private key formats
-		if block.Type != "PRIVATE KEY" && block.Type != "RSA PRIVATE KEY" {
-			t.Errorf("Expected PRIVATE KEY or RSA PRIVATE KEY, got %s", block.Type)
-		}
+		testPrivateKey(t, KeyPEM, "Server private key")
 	})
 
-	// Test Console client certificate
 	t.Run("Console Client Certificate", func(t *testing.T) {
-		if len(ConsoleClientCertPEM) == 0 {
-			t.Fatal("Console client certificate is empty")
-		}
+		testClientCertificate(t)
+	})
 
-		block, _ := pem.Decode(ConsoleClientCertPEM)
-		if block == nil {
-			t.Fatal("Failed to decode console client certificate PEM")
-		}
+	t.Run("Console Client Private Key", func(t *testing.T) {
+		testPrivateKey(t, ConsoleClientKeyPEM, "Console client private key")
+	})
 
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			t.Fatalf("Failed to parse console client certificate: %v", err)
-		}
+	t.Run("Certificate Chain Validation", func(t *testing.T) {
+		testCertificateChainValidation(t)
+	})
+}
 
-		if cert.Subject.CommonName != "console" {
-			t.Errorf("Expected client CN 'console', got '%s'", cert.Subject.CommonName)
-		}
+// testCACertificate tests the CA certificate properties
+func testCACertificate(t *testing.T) {
+	cert := parseCertificateFromPEM(t, CAPem, "CA certificate")
 
-		if cert.IsCA {
-			t.Error("Client certificate should have IsCA=false")
-		}
+	if cert.Subject.CommonName != "Minexus-test CA" {
+		t.Errorf("Expected CA CN 'Minexus-test CA', got '%s'", cert.Subject.CommonName)
+	}
 
-		// Check for client authentication usage
-		hasClientAuth := false
-		for _, usage := range cert.ExtKeyUsage {
-			if usage == x509.ExtKeyUsageClientAuth {
-				hasClientAuth = true
+	if !cert.IsCA {
+		t.Error("CA certificate should have IsCA=true")
+	}
+}
+
+// testServerCertificate tests the server certificate properties
+func testServerCertificate(t *testing.T) {
+	cert := parseCertificateFromPEM(t, CertPEM, "Server certificate")
+
+	if cert.Subject.CommonName != "nexus" {
+		t.Errorf("Expected server CN 'nexus', got '%s'", cert.Subject.CommonName)
+	}
+
+	if cert.IsCA {
+		t.Error("Server certificate should have IsCA=false")
+	}
+
+	validateExtKeyUsage(t, cert.ExtKeyUsage, x509.ExtKeyUsageServerAuth, "server authentication")
+	validateDNSNames(t, cert.DNSNames, []string{"localhost", "nexus"})
+}
+
+// testClientCertificate tests the client certificate properties
+func testClientCertificate(t *testing.T) {
+	cert := parseCertificateFromPEM(t, ConsoleClientCertPEM, "Console client certificate")
+
+	if cert.Subject.CommonName != "console" {
+		t.Errorf("Expected client CN 'console', got '%s'", cert.Subject.CommonName)
+	}
+
+	if cert.IsCA {
+		t.Error("Client certificate should have IsCA=false")
+	}
+
+	validateExtKeyUsage(t, cert.ExtKeyUsage, x509.ExtKeyUsageClientAuth, "client authentication")
+}
+
+// testPrivateKey tests private key properties
+func testPrivateKey(t *testing.T, keyPEM []byte, keyName string) {
+	if len(keyPEM) == 0 {
+		t.Fatalf("%s is empty", keyName)
+	}
+
+	block, _ := pem.Decode(keyPEM)
+	if block == nil {
+		t.Fatalf("Failed to decode %s PEM", keyName)
+	}
+
+	if block.Type != "PRIVATE KEY" && block.Type != "RSA PRIVATE KEY" {
+		t.Errorf("Expected PRIVATE KEY or RSA PRIVATE KEY, got %s", block.Type)
+	}
+}
+
+// testCertificateChainValidation tests certificate chain validation
+func testCertificateChainValidation(t *testing.T) {
+	caCert := parseCertificateFromPEM(t, CAPem, "CA certificate")
+	serverCert := parseCertificateFromPEM(t, CertPEM, "server certificate")
+	clientCert := parseCertificateFromPEM(t, ConsoleClientCertPEM, "client certificate")
+
+	roots := x509.NewCertPool()
+	roots.AddCert(caCert)
+
+	verifyCertificate(t, serverCert, roots, x509.ExtKeyUsageServerAuth, "Server")
+	verifyCertificate(t, clientCert, roots, x509.ExtKeyUsageClientAuth, "Client")
+}
+
+// parseCertificateFromPEM is a helper function to parse a certificate from PEM bytes
+func parseCertificateFromPEM(t *testing.T, pemBytes []byte, certName string) *x509.Certificate {
+	if len(pemBytes) == 0 {
+		t.Fatalf("%s is empty", certName)
+	}
+
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		t.Fatalf("Failed to decode %s PEM", certName)
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("Failed to parse %s: %v", certName, err)
+	}
+
+	return cert
+}
+
+// validateExtKeyUsage validates that a certificate has the expected extended key usage
+func validateExtKeyUsage(t *testing.T, usages []x509.ExtKeyUsage, expected x509.ExtKeyUsage, usageName string) {
+	for _, usage := range usages {
+		if usage == expected {
+			return
+		}
+	}
+	t.Errorf("Certificate should have %s usage", usageName)
+}
+
+// validateDNSNames validates that a certificate has the expected DNS names
+func validateDNSNames(t *testing.T, dnsNames []string, expectedNames []string) {
+	for _, expected := range expectedNames {
+		found := false
+		for _, dns := range dnsNames {
+			if dns == expected {
+				found = true
 				break
 			}
 		}
-		if !hasClientAuth {
-			t.Error("Client certificate should have client authentication usage")
+		if !found {
+			t.Errorf("Certificate should include '%s' in SANs", expected)
 		}
-	})
+	}
+}
 
-	// Test Console client private key
-	t.Run("Console Client Private Key", func(t *testing.T) {
-		if len(ConsoleClientKeyPEM) == 0 {
-			t.Fatal("Console client private key is empty")
-		}
-
-		block, _ := pem.Decode(ConsoleClientKeyPEM)
-		if block == nil {
-			t.Fatal("Failed to decode console client private key PEM")
-		}
-
-		// Accept both modern PKCS#8 and legacy PKCS#1 private key formats
-		if block.Type != "PRIVATE KEY" && block.Type != "RSA PRIVATE KEY" {
-			t.Errorf("Expected PRIVATE KEY or RSA PRIVATE KEY, got %s", block.Type)
-		}
-	})
-
-	// Test certificate chain validation
-	t.Run("Certificate Chain Validation", func(t *testing.T) {
-		// Parse CA cert
-		caBlock, _ := pem.Decode(CAPem)
-		caCert, err := x509.ParseCertificate(caBlock.Bytes)
-		if err != nil {
-			t.Fatalf("Failed to parse CA certificate: %v", err)
-		}
-
-		// Parse server cert
-		serverBlock, _ := pem.Decode(CertPEM)
-		serverCert, err := x509.ParseCertificate(serverBlock.Bytes)
-		if err != nil {
-			t.Fatalf("Failed to parse server certificate: %v", err)
-		}
-
-		// Parse client cert
-		clientBlock, _ := pem.Decode(ConsoleClientCertPEM)
-		clientCert, err := x509.ParseCertificate(clientBlock.Bytes)
-		if err != nil {
-			t.Fatalf("Failed to parse client certificate: %v", err)
-		}
-
-		// Create certificate pool with CA
-		roots := x509.NewCertPool()
-		roots.AddCert(caCert)
-
-		// Verify server certificate
-		serverOpts := x509.VerifyOptions{
-			Roots:     roots,
-			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		}
-		if _, err := serverCert.Verify(serverOpts); err != nil {
-			t.Errorf("Server certificate verification failed: %v", err)
-		}
-
-		// Verify client certificate
-		clientOpts := x509.VerifyOptions{
-			Roots:     roots,
-			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-		}
-		if _, err := clientCert.Verify(clientOpts); err != nil {
-			t.Errorf("Client certificate verification failed: %v", err)
-		}
-	})
+// verifyCertificate verifies a certificate against a root CA pool
+func verifyCertificate(t *testing.T, cert *x509.Certificate, roots *x509.CertPool, keyUsage x509.ExtKeyUsage, certType string) {
+	opts := x509.VerifyOptions{
+		Roots:     roots,
+		KeyUsages: []x509.ExtKeyUsage{keyUsage},
+	}
+	if _, err := cert.Verify(opts); err != nil {
+		t.Errorf("%s certificate verification failed: %v", certType, err)
+	}
 }
