@@ -24,7 +24,7 @@ FROM debian:bookworm-slim
 ENV TZ=Europe/Zurich
 
 # Add ca-certificates and basic tools
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install --no-install-recommends -y \
     ca-certificates \
     jq \
     && rm -rf /var/lib/apt/lists/*
