@@ -44,6 +44,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buf-
 
+      - name: Clean conflicting module cache
+        run: |
+          echo "Cleaning conflicting external module cache for github.com/arhuman/minexus..."
+          rm -rf ~/go/pkg/mod/github.com/arhuman/minexus@v1.1.0
+          rm -rf ~/go/pkg/mod/cache/download/github.com/arhuman/minexus
+          echo "Cache cleaned successfully"
+
       - name: Install dependencies
         run: go mod tidy
 
