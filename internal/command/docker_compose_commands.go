@@ -261,6 +261,160 @@ func (c *DockerComposeDownCommand) Execute(ctx *ExecutionContext, payload string
 	return c.BaseCommand.CreateSuccessResult(ctx, string(output)), nil
 }
 
+// DockerComposeFindCommand finds all directories containing docker-compose.yml files
+type DockerComposeFindCommand struct {
+	*BaseCommand
+}
+
+// NewDockerComposeFindCommand creates a new docker-compose find command
+func NewDockerComposeFindCommand() *DockerComposeFindCommand {
+	base := NewBaseCommand(
+		"docker-compose:find",
+		"docker",
+		"Find all directories containing docker-compose.yml files under a given path",
+		"docker-compose:find <path>",
+	).WithParameters(
+		Param{Name: "path", Type: "string", Required: true, Description: "Root path to search for docker-compose.yml files"},
+	).WithExamples(
+		Example{
+			Description: "Find all docker-compose.yml files under /opt",
+			Command:     `command-send minion web-01 '{"command": "find", "path": "/opt"}'`,
+			Expected:    "Returns list of directories containing docker-compose.yml files under /opt",
+		},
+		Example{
+			Description: "Simple syntax for current directory",
+			Command:     "command-send minion web-01 \"docker-compose:find .\"",
+			Expected:    "Lists all directories with docker-compose files under current directory",
+		},
+		Example{
+			Description: "Search home directory",
+			Command:     "command-send minion web-01 \"docker-compose:find /home/user\"",
+			Expected:    "Recursively finds docker-compose files in user's home directory",
+		},
+	).WithNotes(
+		"Searches recursively through all subdirectories",
+		"Looks for both docker-compose.yml and docker-compose.yaml files",
+		"Returns the directory paths containing compose files, not the file paths themselves",
+		"May take time for large directory trees",
+	)
+
+	return &DockerComposeFindCommand{
+		BaseCommand: base,
+	}
+}
+
+// Execute implements ExecutableCommand interface
+func (c *DockerComposeFindCommand) Execute(ctx *ExecutionContext, payload string) (*pb.CommandResult, error) {
+	request, err := parseDockerComposePayload(payload)
+	if err != nil {
+		return c.BaseCommand.CreateErrorResult(ctx, fmt.Errorf("invalid payload: %w", err)), nil
+	}
+
+	if request.Path == "" {
+		return c.BaseCommand.CreateErrorResult(ctx, fmt.Errorf("path is required")), nil
+	}
+
+	// Check if the root path exists
+	if _, err := os.Stat(request.Path); os.IsNotExist(err) {
+		return c.BaseCommand.CreateErrorResult(ctx, fmt.Errorf("path does not exist: %s", request.Path)), nil
+	}
+
+	// Find all directories containing docker-compose files
+	foundDirs, err := findDockerComposeDirectories(request.Path)
+	if err != nil {
+		return c.BaseCommand.CreateErrorResult(ctx, fmt.Errorf("error searching for docker-compose files: %w", err)), nil
+	}
+
+	// Format the output
+	if len(foundDirs) == 0 {
+		return c.BaseCommand.CreateSuccessResult(ctx, fmt.Sprintf("No docker-compose.yml files found under: %s", request.Path)), nil
+	}
+
+	output := fmt.Sprintf("Found %d director%s containing docker-compose.yml files under %s:\n\n", 
+		len(foundDirs), 
+		func() string { if len(foundDirs) == 1 { return "y" }; return "ies" }(),
+		request.Path)
+	
+	for _, dir := range foundDirs {
+		output += fmt.Sprintf("  %s\n", dir)
+	}
+
+	return c.BaseCommand.CreateSuccessResult(ctx, output), nil
+}
+
+// DockerComposeViewCommand displays the content of docker-compose.yml file in the specified path
+type DockerComposeViewCommand struct {
+	*BaseCommand
+}
+
+// NewDockerComposeViewCommand creates a new docker-compose view command
+func NewDockerComposeViewCommand() *DockerComposeViewCommand {
+	base := NewBaseCommand(
+		"docker-compose:view",
+		"docker",
+		"Display the content of docker-compose.yml file in the specified path",
+		"docker-compose:view <path>",
+	).WithParameters(
+		Param{Name: "path", Type: "string", Required: true, Description: "Path to directory containing docker-compose.yml file"},
+	).WithExamples(
+		Example{
+			Description: "View docker-compose.yml content in /opt/myapp",
+			Command:     `command-send minion web-01 '{"command": "view", "path": "/opt/myapp"}'`,
+			Expected:    "Displays the content of /opt/myapp/docker-compose.yml",
+		},
+		Example{
+			Description: "Simple syntax for current directory",
+			Command:     "command-send minion web-01 \"docker-compose:view .\"",
+			Expected:    "Shows docker-compose.yml content in current directory",
+		},
+		Example{
+			Description: "View specific application configuration",
+			Command:     "command-send minion web-01 \"docker-compose:view /home/user/myproject\"",
+			Expected:    "Displays the docker-compose configuration for the project",
+		},
+	).WithNotes(
+		"Only displays the docker-compose.yml file in the specified directory (not subdirectories)",
+		"Looks for both docker-compose.yml and docker-compose.yaml files",
+		"Path must contain a valid docker-compose file",
+		"File content is displayed as-is without modification",
+	)
+
+	return &DockerComposeViewCommand{
+		BaseCommand: base,
+	}
+}
+
+// Execute implements ExecutableCommand interface
+func (c *DockerComposeViewCommand) Execute(ctx *ExecutionContext, payload string) (*pb.CommandResult, error) {
+	request, err := parseDockerComposePayload(payload)
+	if err != nil {
+		return c.BaseCommand.CreateErrorResult(ctx, fmt.Errorf("invalid payload: %w", err)), nil
+	}
+
+	if request.Path == "" {
+		return c.BaseCommand.CreateErrorResult(ctx, fmt.Errorf("path is required")), nil
+	}
+
+	// Validate path exists and contains docker-compose file
+	if err := validateDockerComposePath(request.Path); err != nil {
+		return c.BaseCommand.CreateErrorResult(ctx, err), nil
+	}
+
+	// Get the compose file path
+	composeFile := getComposeFile(request.Path)
+	
+	// Read the file content
+	content, err := os.ReadFile(composeFile)
+	if err != nil {
+		return c.BaseCommand.CreateErrorResult(ctx, fmt.Errorf("failed to read docker-compose file: %w", err)), nil
+	}
+
+	// Format the output with file path and content
+	output := fmt.Sprintf("Content of %s:\n\n%s", composeFile, string(content))
+
+	return c.BaseCommand.CreateSuccessResult(ctx, output), nil
+}
+
 // DockerComposeCommand is a unified command that routes to specific docker-compose operations
 type DockerComposeCommand struct {
 	*BaseCommand
@@ -272,10 +426,10 @@ func NewDockerComposeCommand() *DockerComposeCommand {
 		"docker-compose",
 		"docker",
 		"Unified docker-compose command handler",
-		"Use docker-compose:ps, docker-compose:up, or docker-compose:down instead",
+		"Use docker-compose:ps, docker-compose:up, docker-compose:down, or docker-compose:find instead",
 	).WithNotes(
 		"This is a router command - use specific subcommands instead",
-		"Available subcommands: ps, up, down",
+		"Available subcommands: ps, up, down, find",
 	)
 
 	return &DockerComposeCommand{
@@ -285,7 +439,7 @@ func NewDockerComposeCommand() *DockerComposeCommand {
 
 // Execute implements ExecutableCommand interface (should not be called directly)
 func (c *DockerComposeCommand) Execute(ctx *ExecutionContext, payload string) (*pb.CommandResult, error) {
-	return c.BaseCommand.CreateErrorResult(ctx, fmt.Errorf("use specific docker-compose subcommands: docker-compose:ps, docker-compose:up, docker-compose:down")), nil
+	return c.BaseCommand.CreateErrorResult(ctx, fmt.Errorf("use specific docker-compose subcommands: docker-compose:ps, docker-compose:up, docker-compose:down, docker-compose:find")), nil
 }
 
 // Helper functions
@@ -376,4 +530,31 @@ func getComposeFile(basePath string) string {
 
 	// Return .yml as default (will fail validation later)
 	return ymlPath
+}
+
+// findDockerComposeDirectories recursively searches for directories containing docker-compose.yml or docker-compose.yaml files
+func findDockerComposeDirectories(rootPath string) ([]string, error) {
+	var foundDirs []string
+
+	err := filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			// Skip directories we can't access
+			return nil
+		}
+
+		// Check if current file is a docker-compose file
+		if !info.IsDir() && (info.Name() == "docker-compose.yml" || info.Name() == "docker-compose.yaml") {
+			// Add the directory containing this file
+			dir := filepath.Dir(path)
+			foundDirs = append(foundDirs, dir)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return foundDirs, nil
 }

@@ -122,7 +122,7 @@ func createMockConsole(mockClient *mockConsoleServiceClient) *Console {
 	// Initialize UI and parser manually for testing
 	registry := command.SetupCommands(15 * time.Second)
 	console.ui = NewUIManager(logger, registry)
-	console.parser = NewCommandParser()
+	console.parser = NewCommandParser(registry)
 
 	return console
 }
@@ -630,7 +630,7 @@ func TestFormatLastSeen(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := formatLastSeen(tt.timestamp)
+			result := FormatLastSeen(tt.timestamp)
 
 			if !strings.Contains(result, tt.expected) {
 				t.Errorf("Expected result to contain '%s', got '%s'", tt.expected, result)

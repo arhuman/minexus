@@ -2,12 +2,15 @@ package command
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	pb "github.com/arhuman/minexus/protogen"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -461,6 +464,8 @@ func TestDockerComposeCommandsMetadata(t *testing.T) {
 		NewDockerComposePSCommand(),
 		NewDockerComposeUpCommand(),
 		NewDockerComposeDownCommand(),
+		NewDockerComposeFindCommand(),
+		NewDockerComposeViewCommand(),
 		NewDockerComposeCommand(),
 	}
 
@@ -487,6 +492,151 @@ func TestDockerComposeCommandsMetadata(t *testing.T) {
 	}
 }
 
+func TestDockerComposeViewCommand(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupFunc   func(t *testing.T) string
+		payload     string
+		expectError bool
+		errorMsg    string
+		checkOutput func(t *testing.T, output string, testDir string)
+	}{
+		{
+			name:        "Valid path with simple syntax",
+			setupFunc:   setupTestDir,
+			payload:     "", // Will be set dynamically with test directory
+			expectError: false,
+			checkOutput: func(t *testing.T, output string, testDir string) {
+				assert.Contains(t, output, "Content of")
+				assert.Contains(t, output, "docker-compose.yml")
+				assert.Contains(t, output, "version: '3.8'")
+				assert.Contains(t, output, "services:")
+				assert.Contains(t, output, "web:")
+				assert.Contains(t, output, "database:")
+				assert.Contains(t, output, "nginx:alpine")
+				assert.Contains(t, output, "postgres:alpine")
+			},
+		},
+		{
+			name:        "Valid path with JSON syntax",
+			setupFunc:   setupTestDir,
+			payload:     "", // Will be set dynamically with test directory
+			expectError: false,
+			checkOutput: func(t *testing.T, output string, testDir string) {
+				assert.Contains(t, output, "Content of")
+				assert.Contains(t, output, "docker-compose.yml")
+				assert.Contains(t, output, "version: '3.8'")
+				assert.Contains(t, output, "services:")
+			},
+		},
+		{
+			name:        "Missing path",
+			setupFunc:   setupTestDir,
+			payload:     `{"command": "view"}`,
+			expectError: true,
+			errorMsg:    "path is required",
+		},
+		{
+			name:        "Invalid JSON format",
+			setupFunc:   setupTestDir,
+			payload:     `{"command": "view", "path": "/invalid/path"`,
+			expectError: true,
+			errorMsg:    "invalid JSON format",
+		},
+		{
+			name:        "Nonexistent path",
+			setupFunc:   setupTestDir,
+			payload:     `{"command": "view", "path": "/nonexistent/path"}`,
+			expectError: true,
+			errorMsg:    "path does not exist",
+		},
+		{
+			name:        "Path without docker-compose file",
+			setupFunc:   setupInvalidTestDir,
+			payload:     "", // Will be set dynamically with test directory
+			expectError: true,
+			errorMsg:    "no docker-compose.yml or docker-compose.yaml found",
+		},
+		{
+			name:        "Empty payload",
+			setupFunc:   setupTestDir,
+			payload:     "",
+			expectError: true,
+			errorMsg:    "invalid payload format",
+		},
+		{
+			name: "Simple syntax with .yaml extension",
+			setupFunc: func(t *testing.T) string {
+				tmpDir := t.TempDir()
+				// Create a docker-compose.yaml file (with .yaml extension)
+				composeContent := `version: '3.8'
+services:
+  api:
+    image: node:alpine
+    ports:
+      - "3000:3000"
+`
+				composeFile := filepath.Join(tmpDir, "docker-compose.yaml")
+				err := os.WriteFile(composeFile, []byte(composeContent), 0644)
+				if err != nil {
+					t.Fatalf("Failed to create test docker-compose.yaml: %v", err)
+				}
+				return tmpDir
+			},
+			payload:     "", // Will be set dynamically with test directory
+			expectError: false,
+			checkOutput: func(t *testing.T, output string, testDir string) {
+				assert.Contains(t, output, "Content of")
+				assert.Contains(t, output, "docker-compose.yaml")
+				assert.Contains(t, output, "version: '3.8'")
+				assert.Contains(t, output, "api:")
+				assert.Contains(t, output, "node:alpine")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testDir := tt.setupFunc(t)
+
+			// Set payload dynamically if needed
+			payload := tt.payload
+			if payload == "" && !strings.Contains(tt.name, "Empty payload") {
+				if strings.Contains(tt.name, "JSON syntax") {
+					payload = fmt.Sprintf(`{"command": "view", "path": "%s"}`, testDir)
+				} else {
+					payload = fmt.Sprintf("docker-compose:view %s", testDir)
+				}
+			} else if payload == "" && strings.Contains(tt.name, "Empty payload") {
+				payload = ""
+			}
+
+			// Set up command and context
+			cmd := NewDockerComposeViewCommand()
+			ctx := createTestExecutionContext()
+
+			// Execute command
+			result, err := cmd.Execute(ctx, payload)
+
+			// Verify results
+			if tt.expectError {
+				require.NotNil(t, result)
+				assert.NotEqual(t, int32(0), result.ExitCode)
+				if tt.errorMsg != "" {
+					assert.Contains(t, result.Stderr, tt.errorMsg)
+				}
+			} else {
+				require.Nil(t, err)
+				require.NotNil(t, result)
+				assert.Equal(t, int32(0), result.ExitCode)
+				if tt.checkOutput != nil {
+					tt.checkOutput(t, result.Stdout, testDir)
+				}
+			}
+		})
+	}
+}
+
 // Helper functions for tests
 
 func containsIgnoreCase(s, substr string) bool {
@@ -497,6 +647,137 @@ func containsIgnoreCase(s, substr string) bool {
 
 func replaceIgnoreCase(s, old, new string) string {
 	return strings.ReplaceAll(s, old, new)
+}
+
+func TestFindDockerComposeDirectories(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupFunc     func(t *testing.T) string
+		expectedCount int
+		expectedDirs  []string // relative to test directory
+	}{
+		{
+			name: "Multiple nested directories with compose files",
+			setupFunc: func(t *testing.T) string {
+				rootDir := t.TempDir()
+
+				// Create complex structure
+				dirs := []string{
+					"app1",
+					"app2/backend",
+					"app2/frontend",
+					"services/database",
+					"services/cache",
+				}
+
+				for _, dir := range dirs {
+					fullPath := filepath.Join(rootDir, dir)
+					os.MkdirAll(fullPath, 0755)
+
+					// Create compose file in each directory
+					composeFile := filepath.Join(fullPath, "docker-compose.yml")
+					err := os.WriteFile(composeFile, []byte("version: '3.8'\nservices:\n  test:\n    image: alpine"), 0644)
+					require.NoError(t, err)
+				}
+
+				// Create a directory without compose file
+				emptyDir := filepath.Join(rootDir, "empty")
+				os.MkdirAll(emptyDir, 0755)
+
+				return rootDir
+			},
+			expectedCount: 5,
+			expectedDirs: []string{
+				"app1",
+				"app2/backend",
+				"app2/frontend",
+				"services/database",
+				"services/cache",
+			},
+		},
+		{
+			name: "Single compose file",
+			setupFunc: func(t *testing.T) string {
+				rootDir := t.TempDir()
+				err := os.WriteFile(filepath.Join(rootDir, "docker-compose.yml"), []byte("version: '3.8'"), 0644)
+				require.NoError(t, err)
+				return rootDir
+			},
+			expectedCount: 1,
+			expectedDirs:  []string{"."},
+		},
+		{
+			name: "No compose files",
+			setupFunc: func(t *testing.T) string {
+				rootDir := t.TempDir()
+
+				// Create some directories with other files
+				subDir := filepath.Join(rootDir, "subdir")
+				os.MkdirAll(subDir, 0755)
+
+				err := os.WriteFile(filepath.Join(rootDir, "readme.txt"), []byte("no compose here"), 0644)
+				require.NoError(t, err)
+				err = os.WriteFile(filepath.Join(subDir, "config.json"), []byte("{}"), 0644)
+				require.NoError(t, err)
+
+				return rootDir
+			},
+			expectedCount: 0,
+			expectedDirs:  []string{},
+		},
+		{
+			name: "Mixed .yml and .yaml files",
+			setupFunc: func(t *testing.T) string {
+				rootDir := t.TempDir()
+
+				// Create directories with different file extensions
+				ymlDir := filepath.Join(rootDir, "yml-app")
+				yamlDir := filepath.Join(rootDir, "yaml-app")
+				os.MkdirAll(ymlDir, 0755)
+				os.MkdirAll(yamlDir, 0755)
+
+				err := os.WriteFile(filepath.Join(ymlDir, "docker-compose.yml"), []byte("version: '3.8'"), 0644)
+				require.NoError(t, err)
+				err = os.WriteFile(filepath.Join(yamlDir, "docker-compose.yaml"), []byte("version: '3.8'"), 0644)
+				require.NoError(t, err)
+
+				return rootDir
+			},
+			expectedCount: 2,
+			expectedDirs: []string{
+				"yml-app",
+				"yaml-app",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testDir := tt.setupFunc(t)
+
+			foundDirs, err := findDockerComposeDirectories(testDir)
+
+			require.NoError(t, err, "findDockerComposeDirectories should not return error")
+			assert.Equal(t, tt.expectedCount, len(foundDirs), "Should find expected number of directories")
+
+			// Check that all expected directories are found
+			for _, expectedDir := range tt.expectedDirs {
+				expectedPath := filepath.Join(testDir, expectedDir)
+				if expectedDir == "." {
+					expectedPath = testDir
+				}
+
+				found := false
+				for _, foundDir := range foundDirs {
+					if foundDir == expectedPath {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "Should find directory: %s", expectedPath)
+			}
+		})
+	}
 }
 
 func TestDockerComposePSCommand2(t *testing.T) {

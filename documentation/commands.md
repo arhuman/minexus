@@ -178,6 +178,8 @@ Manage Docker Compose applications on minions:
 | `docker-compose:ps` | List services and their status | `command-send minion web-01 "docker-compose:ps /opt/myapp"` |
 | `docker-compose:up` | Start services (detached mode) | `command-send minion web-01 "docker-compose:up /opt/myapp"` |
 | `docker-compose:down` | Stop and remove services | `command-send minion web-01 "docker-compose:down /opt/myapp"` |
+| `docker-compose:find` | Find all directories containing docker-compose.yml files | `command-send minion web-01 "docker-compose:find /opt"` |
+| `docker-compose:view` | Display docker-compose.yml file content | `command-send minion web-01 "docker-compose:view /opt/myapp"` |
 
 #### Docker Compose Command Features
 
@@ -191,6 +193,12 @@ Manage Docker Compose applications on minions:
 
 **Simple syntax (recommended for basic operations):**
 ```bash
+# Find all directories with docker-compose files
+command-send minion web-01 "docker-compose:find /opt"
+
+# View docker-compose.yml content
+command-send minion web-01 "docker-compose:view /opt/myapp"
+
 # List all services in /opt/myapp
 command-send minion web-01 "docker-compose:ps /opt/myapp"
 
@@ -203,6 +211,12 @@ command-send minion web-01 "docker-compose:down /opt/myapp"
 
 **JSON syntax (for advanced operations):**
 ```bash
+# Find docker-compose files with JSON format
+command-send minion web-01 '{"command": "find", "path": "/opt"}'
+
+# View docker-compose.yml content with JSON format
+command-send minion web-01 '{"command": "view", "path": "/opt/myapp"}'
+
 # Start specific service with rebuild
 command-send minion web-01 '{"command": "up", "path": "/opt/myapp", "service": "web", "build": true}'
 
@@ -215,6 +229,12 @@ command-send minion web-01 '{"command": "ps", "path": "/opt/myapp"}'
 
 **Deployment scenarios:**
 ```bash
+# First, discover all docker-compose applications
+command-send all "docker-compose:find /opt"
+
+# Review configuration before deployment
+command-send minion web-01 "docker-compose:view /opt/myapp"
+
 # Deploy application with rebuild
 command-send tag env=staging '{"command": "up", "path": "/opt/myapp", "build": true}'
 
@@ -230,14 +250,22 @@ command-send all "docker-compose:ps /opt/myapp"
 
 | Parameter | Type | Required | Description | Default |
 |-----------|------|----------|-------------|---------|
-| `path` | string | Yes | Directory containing docker-compose.yml | - |
+| `path` | string | Yes | Directory path (for ps/up/down/view) or search root (for find) | - |
 | `service` | string | No | Specific service name to target | All services |
 | `build` | boolean | No | Force rebuild images (up command only) | false |
 
+**Notes**: 
+- The `find` command uses `path` as the root directory to search recursively for docker-compose.yml files.
+- The `view` command uses `path` to locate and display the content of the docker-compose.yml file in that specific directory (not subdirectories).
+
 #### Docker Compose Notes
 
-- Requires `docker-compose` to be installed on the target minion
-- Path must contain `docker-compose.yml` or `docker-compose.yaml`
+- Requires `docker-compose` to be installed on the target minion (except for `find` and `view` commands)
+- Path must contain `docker-compose.yml` or `docker-compose.yaml` (for ps/up/down/view commands)
+- The `find` command searches recursively for both `.yml` and `.yaml` extensions
+- The `find` command returns directory paths, not file paths
+- The `view` command displays the content of the docker-compose file in the specified directory only (not subdirectories)
+- The `view` command works with both `.yml` and `.yaml` extensions, preferring `.yml` when both exist
 - The `up` command runs in detached mode (`-d`) by default
 - The `down` command removes containers and networks when stopping all services
 - Service-specific `down` operations use `stop` + `rm` instead of `down`
@@ -448,6 +476,11 @@ command-send tag env=prod "systemctl stop myapp"
 command-send all system:info
 command-send all "ps aux | grep -E '(nginx|apache|docker)'"
 command-send all "netstat -tulpn | grep LISTEN"
+
+# Docker Compose application discovery
+command-send all "docker-compose:find /opt"
+command-send all "docker-compose:find /home"
+command-send all "docker-compose:find /var/www"
 
 # Security audit
 command-send all "find /tmp -type f -perm -4000 2>/dev/null"

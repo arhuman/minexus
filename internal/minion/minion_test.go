@@ -300,19 +300,26 @@ func TestCommandExecutionInvalidCommand(t *testing.T) {
 	command := &pb.Command{
 		Id:      "cmd-invalid",
 		Type:    pb.CommandType_INTERNAL,
-		Payload: "", // Empty payload should cause error
+		Payload: "", // Empty payload should return error result with non-zero exit code
 	}
 
 	result, err := minion.executeCommand(context.Background(), command)
 
-	if err == nil {
-		t.Error("Expected error for invalid command but got none")
+	// With the new command routing system, empty commands are handled by the shell handler
+	// which returns a proper CommandResult with non-zero exit code instead of a Go error
+	if err != nil {
+		t.Errorf("Unexpected error: %v (empty commands should return CommandResult with non-zero exit code)", err)
 	}
 
 	if result == nil {
-		t.Error("Expected result even on error")
+		t.Error("Expected result for invalid command")
 	} else if result.ExitCode == 0 {
-		t.Error("Expected non-zero exit code for failed command")
+		t.Error("Expected non-zero exit code for empty command")
+	} else {
+		// Verify the error message indicates empty command
+		if !strings.Contains(result.Stderr, "empty command") {
+			t.Errorf("Expected 'empty command' in stderr, got: %s", result.Stderr)
+		}
 	}
 }
 
