@@ -10,6 +10,7 @@ import (
 	"github.com/arhuman/minexus/internal/command"
 	"github.com/arhuman/minexus/internal/config"
 	"github.com/arhuman/minexus/internal/logging"
+	"github.com/arhuman/minexus/internal/util"
 	"github.com/arhuman/minexus/internal/version"
 
 	// Import with correct package name
@@ -42,7 +43,7 @@ func NewConsole(grpcClient *GRPCClient, logger *zap.Logger) *Console {
 		client:        grpcClient.client,
 		grpc:          grpcClient,
 		ui:            NewUIManager(logger, registry),
-		parser:        NewCommandParser(),
+		parser:        NewCommandParser(registry),
 		logger:        logger,
 		commandStatus: make(map[string]*CommandStatus),
 	}
@@ -833,18 +834,12 @@ func filterInput(r rune) (rune, bool) {
 
 // isHexString checks if string is hex
 func isHexString(s string) bool {
-	parser := &CommandParser{}
-	return parser.isHexString(s)
+	return util.IsHexString(s)
 }
 
 // formatTags formats tags for display
 func formatTags(tags map[string]string) string {
 	return FormatTags(tags)
-}
-
-// formatLastSeen formats timestamp for display
-func formatLastSeen(timestamp int64) string {
-	return FormatLastSeen(timestamp)
 }
 
 func main() {

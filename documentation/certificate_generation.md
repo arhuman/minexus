@@ -16,6 +16,22 @@ The PKI consists of three main components:
 
 ## Certificate Generation Steps
 
+### Automated Generation
+
+A script is provided to automate the generation of all necessary certificates. To use it, run the following command from the root of the repository:
+
+```bash
+./internal/certs/files/mkcerts.sh <nexus_hostname_or_ip> "/CN=Minexus CA/O=Minexus" <destination_directory>
+```
+
+For example, to generate certificates for a Nexus server running on `localhost` and store them in `internal/certs/files/dev`, you would run:
+
+```bash
+./internal/certs/files/mkcerts.sh localhost "/CN=Minexus CA/O=Minexus" internal/certs/files/dev
+```
+
+### Manual Generation
+
 ### 1. Generate Certificate Authority
 
 ```bash

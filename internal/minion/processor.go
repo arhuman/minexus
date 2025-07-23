@@ -89,33 +89,11 @@ func (cp *commandProcessor) Execute(ctx context.Context, cmd *pb.Command) (*pb.C
 		return result, nil
 	}
 
-	// Try to execute as shell command if not found in registry
-	logger.Debug("Command not found in registry, trying as shell command",
+	// Command not found in registry - return error without fallback
+	logger.Debug("Command not found in registry",
 		zap.String("command_id", cmd.Id),
+		zap.String("payload", cmd.Payload),
 		zap.Error(err))
-
-	// Get the shell command from registry and execute directly
-	if shellCmd, exists := cp.registry.GetCommand("shell"); exists {
-		result, err = shellCmd.Execute(execCtx, cmd.Payload)
-		if err == nil {
-			// Check if the shell command failed (non-zero exit code)
-			if result.ExitCode != 0 {
-				// Convert shell command failure to error for empty/invalid commands
-				if cmd.Payload == "" || len(cmd.Payload) == 0 {
-					logger.Warn("Empty command received",
-						zap.String("command_id", cmd.Id))
-					return result, fmt.Errorf("empty command")
-				}
-			}
-			logger.Debug("Shell command execution successful",
-				zap.String("command_id", cmd.Id))
-			return result, nil
-		}
-	}
-
-	// If shell command also fails, return the original error
-	logger.Error("Both registry and shell command execution failed",
-		zap.String("command_id", cmd.Id))
 
 	// Store sequence number in our tracking map if available
 	if cmd.Metadata != nil && cmd.Metadata["seq_num"] != "" {
@@ -129,8 +107,8 @@ func (cp *commandProcessor) Execute(ctx context.Context, cmd *pb.Command) (*pb.C
 		MinionId:  cp.id,
 		Timestamp: time.Now().Unix(),
 		ExitCode:  1,
-		Stderr:    fmt.Sprintf("Command not found and shell execution failed: %v", err),
-	}, err
+		Stderr:    fmt.Sprintf("Command not found: %s", cmd.Payload),
+	}, fmt.Errorf("command not found: %s", cmd.Payload)
 }
 
 // CanHandle determines if this executor can handle the given command type

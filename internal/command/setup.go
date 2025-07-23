@@ -30,6 +30,8 @@ func SetupCommands(shellTimeout time.Duration) *Registry {
 	registry.Register(NewDockerComposePSCommand())
 	registry.Register(NewDockerComposeUpCommand())
 	registry.Register(NewDockerComposeDownCommand())
+	registry.Register(NewDockerComposeFindCommand())
+	registry.Register(NewDockerComposeViewCommand())
 	registry.Register(NewDockerComposeCommand()) // Unified docker-compose command for routing
 
 	return registry

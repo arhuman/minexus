@@ -53,6 +53,20 @@ func (r *Registry) Execute(ctx *ExecutionContext, command *pb.Command) (*pb.Comm
 		}
 	}
 
+	// Fallback routing based on command type
+	switch command.Type {
+	case pb.CommandType_SYSTEM:
+		// Route system commands to the "system" command handler
+		if cmd, exists := r.commands["system"]; exists {
+			return cmd.Execute(ctx, command.Payload)
+		}
+	case pb.CommandType_INTERNAL:
+		// Route internal shell commands to the "shell" command handler
+		if cmd, exists := r.commands["shell"]; exists {
+			return cmd.Execute(ctx, command.Payload)
+		}
+	}
+
 	// Command not found
 	return &pb.CommandResult{
 		CommandId: ctx.CommandID,
