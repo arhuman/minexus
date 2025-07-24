@@ -35,6 +35,7 @@ services:
       - DEBUG=${DEBUG:-false}
       - NEXUS_MINION_PORT=${NEXUS_MINION_PORT:-11972}
       - NEXUS_CONSOLE_PORT=${NEXUS_CONSOLE_PORT:-11973}
+      - NEXUS_WEB_PORT=${NEXUS_WEB_PORT:-8086}
       - DBHOST=nexus_db
       - DBPORT=${DBPORT:-5432}
       - DBUSER=${DBUSER}
@@ -43,13 +44,14 @@ services:
     ports:
       - "${NEXUS_MINION_PORT:-11972}:${NEXUS_MINION_PORT:-11972}"
       - "${NEXUS_CONSOLE_PORT:-11973}:${NEXUS_CONSOLE_PORT:-11973}"
+      - "${NEXUS_WEB_PORT:-8086}:${NEXUS_WEB_PORT:-8086}"
     depends_on:
       nexus_db:
         condition: service_healthy
     networks:
       - default
     healthcheck:
-      test: ["CMD-SHELL", "sleep 1 && nc -z localhost ${NEXUS_MINION_PORT:-11972} && nc -z localhost ${NEXUS_CONSOLE_PORT:-11973} && echo 'Both ports accessible' || exit 1"]
+      test: ["CMD-SHELL", "sleep 1 && nc -z localhost ${NEXUS_MINION_PORT:-11972} && nc -z localhost ${NEXUS_CONSOLE_PORT:-11973} && nc -z localhost ${NEXUS_WEB_PORT:-8086} && echo 'All three ports accessible' || exit 1"]
       interval: 3s
       timeout: 15s
       retries: 10
