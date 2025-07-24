@@ -1,0 +1,171 @@
+:root {
+    /* Colors - easily customizable */
+    --primary: #2563eb;
+    --secondary: #64748b;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --error: #ef4444;
+
+    /* Background colors */
+    --bg-primary: #f8fafc;
+    --bg-secondary: #f1f5f9;
+    --card-bg: #ffffff;
+
+    /* Text colors */
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --text-muted: #94a3b8;
+
+    /* Shadows and borders */
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+    --border: 1px solid #e2e8f0;
+}
+
+/* Dark theme variant */
+[data-theme="dark"] {
+    --primary: #3b82f6;
+    --secondary: #94a3b8;
+    --success: #22c55e;
+    --warning: #fbbf24;
+    --error: #f87171;
+
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --card-bg: #334155;
+
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.3);
+    --border: 1px solid #475569;
+}
+
+/* Theme toggle button */
+.theme-toggle {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    background: var(--card-bg);
+    border: var(--border);
+    border-radius: 6px;
+    padding: 0.5rem;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    color: var(--text-primary);
+    font-size: 1.25rem;
+}
+
+.theme-toggle:hover {
+    background: var(--bg-secondary);
+}
+
+/* Smooth transitions for theme changes */
+* {
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Custom scrollbar for webkit browsers */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--text-muted);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+/* Focus styles for accessibility */
+.btn:focus,
+button:focus,
+input:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* Loading animation */
+.loading {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--text-muted);
+    border-radius: 50%;
+    border-top-color: var(--primary);
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Pulse animation for status indicators */
+.status-indicator.loading {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: .5;
+    }
+}
+
+/* Auto-refresh indicator */
+.auto-refresh {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    background: var(--card-bg);
+    border: var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    box-shadow: var(--shadow);
+}
+
+.auto-refresh.active {
+    color: var(--success);
+}
+
+/* Custom properties for component variants */
+.status-card.critical {
+    border-left: 4px solid var(--error);
+}
+
+.status-card.warning {
+    border-left: 4px solid var(--warning);
+}
+
+.status-card.success {
+    border-left: 4px solid var(--success);
+}
+
+/* Hover effects */
+.status-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px 0 rgb(0 0 0 / 0.15);
+}
+
+.minion-item:hover {
+    background: var(--bg-primary);
+}
+
+.port-item:hover {
+    background: var(--bg-primary);
+}
