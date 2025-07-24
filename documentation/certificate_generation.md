@@ -24,10 +24,10 @@ A script is provided to automate the generation of all necessary certificates. T
 ./internal/certs/files/mkcerts.sh <nexus_hostname_or_ip> "/CN=Minexus CA/O=Minexus" <destination_directory>
 ```
 
-For example, to generate certificates for a Nexus server running on `localhost` and store them in `internal/certs/files/dev`, you would run:
+For example, to generate certificates for a Nexus server running on `localhost` and store them in `internal/certs/files/test`, you would run:
 
 ```bash
-./internal/certs/files/mkcerts.sh localhost "/CN=Minexus CA/O=Minexus" internal/certs/files/dev
+./internal/certs/files/mkcerts.sh localhost "/CN=Minexus CA/O=Minexus" internal/certs/files/test
 ```
 
 ### Manual Generation

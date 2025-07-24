@@ -1,5 +1,7 @@
-# No secrets leak
+# Environment-specific configuration files
 .env
+.env.*
+!.env.sample
 # No database in git
 pg_data/
 # The binaries

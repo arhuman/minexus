@@ -15,6 +15,40 @@ import (
 	"github.com/arhuman/minexus/internal/logging"
 )
 
+// Environment constants for MINEXUS_ENV
+const (
+	EnvProduction = "prod"
+	EnvTest       = "test"
+)
+
+// DetectEnvironment returns the current environment based on MINEXUS_ENV
+// Panics on invalid environment values to prevent configuration errors
+func DetectEnvironment() string {
+	env := os.Getenv("MINEXUS_ENV")
+	if env == "" {
+		env = EnvTest // Default to test
+	}
+
+	// Strict validation - panic on invalid environment to prevent typos
+	validEnvs := map[string]bool{
+		EnvProduction: true,
+		EnvTest:       true,
+	}
+
+	if !validEnvs[env] {
+		panic(fmt.Sprintf("Invalid MINEXUS_ENV value: '%s'. Valid values are: %s, %s",
+			env, EnvProduction, EnvTest))
+	}
+
+	return env
+}
+
+// GetEnvironmentFileName returns the environment-specific filename for the current environment
+func GetEnvironmentFileName() string {
+	env := DetectEnvironment()
+	return fmt.Sprintf(".env.%s", env)
+}
+
 // ValidationError represents a configuration validation error
 type ValidationError struct {
 	Field   string
@@ -45,7 +79,7 @@ func (cl *ConfigLoader) WithLogger(logger *zap.Logger) *ConfigLoader {
 	return cl
 }
 
-// LoadEnvFile loads environment variables from .env file
+// LoadEnvFile loads environment variables from .env file (LEGACY - use LoadEnvironmentFile)
 func (cl *ConfigLoader) LoadEnvFile(filename string) error {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -101,6 +135,72 @@ func (cl *ConfigLoader) LoadEnvFile(filename string) error {
 	if cl.logger != nil {
 		cl.logger.Debug("Loaded environment file",
 			zap.String("file", filename),
+			zap.Int("variables", len(cl.envVars)))
+	}
+
+	return nil
+}
+
+// LoadEnvironmentFile loads environment variables from environment-specific file
+// Uses strict validation with no fallback - panics if environment file is missing
+func (cl *ConfigLoader) LoadEnvironmentFile() error {
+	env := DetectEnvironment() // Panics on invalid environment
+	filename := GetEnvironmentFileName()
+
+	// Strict loading - no fallback, panic if file doesn't exist
+	file, err := os.Open(filename)
+	if err != nil {
+		panic(fmt.Sprintf("Required environment file '%s' not found for environment '%s'. "+
+			"Create this file from env.sample or set MINEXUS_ENV to a valid environment (prod, test)",
+			filename, env))
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := strings.TrimSpace(scanner.Text())
+
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Parse KEY=VALUE format
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			if cl.logger != nil {
+				cl.logger.Warn("Invalid line in env file",
+					zap.String("file", filename),
+					zap.Int("line", lineNum),
+					zap.String("content", line))
+			}
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		// Remove quotes if present
+		if len(value) >= 2 {
+			if (strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`)) ||
+				(strings.HasPrefix(value, `'`) && strings.HasSuffix(value, `'`)) {
+				value = value[1 : len(value)-1]
+			}
+		}
+
+		cl.envVars[key] = value
+	}
+
+	if err := scanner.Err(); err != nil {
+		panic(fmt.Sprintf("Error reading environment file '%s': %v", filename, err))
+	}
+
+	if cl.logger != nil {
+		cl.logger.Info("Loaded environment file",
+			zap.String("file", filename),
+			zap.String("environment", env),
 			zap.Int("variables", len(cl.envVars)))
 	}
 
@@ -399,7 +499,7 @@ func DefaultMinionConfig() *MinionConfig {
 // LoadConsoleConfig loads console configuration with validation
 func LoadConsoleConfig() (*ConsoleConfig, error) {
 	loader := NewConfigLoader()
-	if err := loader.LoadEnvFile(".env"); err != nil {
+	if err := loader.LoadEnvironmentFile(); err != nil {
 		return nil, fmt.Errorf("failed to load environment file: %w", err)
 	}
 
@@ -498,7 +598,7 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	defer logging.FuncExit(logger, start)
 
 	loader := NewConfigLoader().WithLogger(logger)
-	if err := loader.LoadEnvFile(".env"); err != nil {
+	if err := loader.LoadEnvironmentFile(); err != nil {
 		return nil, fmt.Errorf("failed to load environment file: %w", err)
 	}
 
@@ -660,7 +760,7 @@ func LoadNexusConfig() (*NexusConfig, error) {
 // LoadMinionConfig loads Minion configuration with validation
 func LoadMinionConfig() (*MinionConfig, error) {
 	loader := NewConfigLoader()
-	if err := loader.LoadEnvFile(".env"); err != nil {
+	if err := loader.LoadEnvironmentFile(); err != nil {
 		return nil, fmt.Errorf("failed to load environment file: %w", err)
 	}
 

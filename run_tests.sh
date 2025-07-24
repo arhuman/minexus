@@ -2,6 +2,8 @@
 
 # run_tests.sh - Enhanced test runner with coverage collection and robust Docker service management
 # Supports both unit tests and integration tests based on SLOW_TESTS environment variable
+# Note: This script assumes Docker is installed and running
+#       This script enforces the test environment through MINEXUS_ENV variable
 
 set -e
 
@@ -11,6 +13,7 @@ COVERAGE_HTML="coverage.html"
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 MAX_RETRIES=60
 RETRY_INTERVAL=2
+MINEXUS_ENV="test"
 NEXUS_MINION_PORT=${NEXUS_MINION_PORT:-11972}
 DB_PORT=5432
 
@@ -82,9 +85,28 @@ check_service_status() {
     fi
 }
 
+# Load environment variables from the appropriate .env file
+load_environment_variables() {
+    local env_file=".env.${MINEXUS_ENV:-dev}"
+    
+    if [ -f "$env_file" ]; then
+        log_info "Loading environment variables from $env_file..."
+        # Export variables from the environment file
+        set -a  # automatically export all variables
+        source "$env_file"
+        set +a  # disable automatic export
+        log_info "Environment variables loaded successfully"
+    else
+        log_warn "Environment file $env_file not found - using defaults"
+    fi
+}
+
 # Setup Docker services with proper dependency management
 setup_docker_services() {
     log_info "Setting up Docker services for integration tests..."
+    
+    # Load environment variables first
+    load_environment_variables
     
     # Check if services are already running
     local services_to_start=()

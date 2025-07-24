@@ -27,27 +27,77 @@ go build -o console ./cmd/console/
 
 ## Configuration
 
-The console can be configured through environment variables, `.env` file, or command-line flags:
+The console can be configured through environment variables, environment-specific configuration files, or command-line flags:
+
+### Environment Detection
+
+The console uses the `MINEXUS_ENV` environment variable to determine which configuration file to load:
+
+- `MINEXUS_ENV=test` (default) → loads `.env.test`
+- `MINEXUS_ENV=prod` → loads `.env.prod`
 
 ### Environment Variables
 
-- `NEXUS_SERVER` - Nexus server address (default: "localhost:11972")
-- `CONNECT_TIMEOUT` - Connection timeout in seconds (default: 3)
+- `NEXUS_SERVER` - Nexus server hostname (default: "localhost")
+- `NEXUS_CONSOLE_PORT` - Console server port (default: 11973)
+- `CONNECT_TIMEOUT` - Connection timeout in seconds (default: 10)
 - `DEBUG` - Enable debug logging (default: false)
 
 ### Command-line Flags
 
 ```bash
-./console -server localhost:11972 -timeout 10 -debug
+./console -server localhost:11973 -timeout 10 -debug
 ```
 
-- `-server, --server` - Nexus server address
+- `-server, --server` - Nexus server address (backward compatible with host:port format)
 - `-timeout, --timeout` - Connection timeout in seconds
 - `-debug, --debug` - Enable debug mode
 
+### Environment-Specific Configuration
+
+Create environment-specific configuration files:
+
+```bash
+# Create production environment configuration
+cp env.sample .env.prod
+
+# Create test environment configuration
+cp env.sample .env.test
+```
+
+**Example `.env.test` file:**
+```bash
+DEBUG=true
+NEXUS_SERVER=localhost
+NEXUS_CONSOLE_PORT=11973
+CONNECT_TIMEOUT=10
+```
+
+**Example `.env.prod` file:**
+```bash
+DEBUG=false
+NEXUS_SERVER=prod-nexus.example.com
+NEXUS_CONSOLE_PORT=11973
+CONNECT_TIMEOUT=3
+```
+
 ## Usage
 
-Start the console:
+Start the console with environment-specific configuration:
+
+```bash
+# Test environment (default)
+MINEXUS_ENV=test ./console
+
+# Production environment
+MINEXUS_ENV=prod ./console
+
+# Or set the environment variable globally
+export MINEXUS_ENV=prod
+./console
+```
+
+Start with default configuration (uses MINEXUS_ENV=test):
 
 ```bash
 ./console
@@ -205,12 +255,21 @@ The console communicates with the Nexus server using the gRPC `ConsoleService` i
 
 2. Check server address and port:
    ```bash
-   ./console -server localhost:11972 -debug
+   ./console -server localhost:11973 -debug
    ```
 
-3. Test connectivity:
+3. Check environment configuration:
    ```bash
-   grpcurl -plaintext localhost:11972 list
+   # Verify MINEXUS_ENV is set correctly
+   echo $MINEXUS_ENV
+   
+   # Check if the required environment file exists
+   ls -la .env.${MINEXUS_ENV:-test}
+   ```
+
+4. Test connectivity:
+   ```bash
+   grpcurl -plaintext localhost:11973 list
    ```
 
 ### Command Issues

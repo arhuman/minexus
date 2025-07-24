@@ -6,6 +6,8 @@ This document explains the testing system for the Minexus project, including uni
 
 The Minexus project uses a conditional testing system that separates fast unit tests from slower integration tests. This allows developers to run quick tests during development while ensuring comprehensive testing before releases.
 
+**All test commands automatically run in the test environment** (`MINEXUS_ENV=test`) and use the test configuration file (`.env.test`) for consistent test behavior.
+
 ## Test Categories
 
 ### Unit Tests
@@ -23,54 +25,64 @@ The Minexus project uses a conditional testing system that separates fast unit t
 ## Quick Start
 
 ```bash
-# Run unit tests only (fast, for development)
+# Run unit tests only (fast, for development) - automatically uses MINEXUS_ENV=test
 make test
 
-# Run all tests including integration tests (comprehensive)
+# Run all tests including integration tests (comprehensive) - automatically uses MINEXUS_ENV=test
 SLOW_TESTS=1 make test
 
-# Generate coverage report
+# Generate coverage report - automatically uses MINEXUS_ENV=test
 make cover
 
-# Generate coverage report including integration tests
+# Generate coverage report including integration tests - automatically uses MINEXUS_ENV=test
 SLOW_TESTS=1 make cover
 ```
+
+**Environment Note:** All test commands automatically set `MINEXUS_ENV=test` and load the test configuration from `.env.test`. No manual environment configuration is required for testing.
 
 ## Testing Commands
 
 ### Basic Testing
 
-| Command | Description | Duration | Dependencies |
-|---------|-------------|----------|--------------|
-| `make test` | Unit tests only | ~5s | None |
-| `SLOW_TESTS=1 make test` | All tests | ~60s | Docker |
-| `make cover` | Unit test coverage | ~5s | None |
-| `SLOW_TESTS=1 make cover` | Full coverage | ~60s | Docker |
+| Command | Description | Duration | Dependencies | Environment |
+|---------|-------------|----------|--------------|-------------|
+| `make test` | Unit tests only | ~5s | None | `MINEXUS_ENV=test` |
+| `SLOW_TESTS=1 make test` | All tests | ~60s | Docker | `MINEXUS_ENV=test` |
+| `make cover` | Unit test coverage | ~5s | None | `MINEXUS_ENV=test` |
+| `SLOW_TESTS=1 make cover` | Full coverage | ~60s | Docker | `MINEXUS_ENV=test` |
 
 ### Coverage Analysis
 
 ```bash
-# Generate HTML coverage report and open in browser
+# Generate HTML coverage report and open in browser (uses MINEXUS_ENV=test)
 make cover-html
 
-# Generate HTML coverage report including integration tests
+# Generate HTML coverage report including integration tests (uses MINEXUS_ENV=test)
 SLOW_TESTS=1 make cover-html
 
-# CI/CD coverage output (percentage only)
+# CI/CD coverage output (percentage only) (uses MINEXUS_ENV=test)
 make cover-ci
 ```
 
 ### Release and Audit
 
 ```bash
-# Comprehensive release testing (includes integration tests)
+# Comprehensive release testing (includes integration tests) (uses MINEXUS_ENV=test)
 make release
 
-# Code quality checks (without tests)
+# Code quality checks (without tests) (uses MINEXUS_ENV=test)
 make audit
 ```
 
 ## Environment Variables
+
+### MINEXUS_ENV (Automatic)
+
+All test commands automatically set `MINEXUS_ENV=test` to ensure consistent test behavior:
+
+- **Automatic Setting**: Test targets set `MINEXUS_ENV=test` without manual intervention
+- **Configuration File**: Uses `.env.test` for test-specific configuration
+- **Isolation**: Ensures tests don't interfere with development or production environments
 
 ### SLOW_TESTS
 
@@ -80,7 +92,7 @@ Controls whether integration tests are executed:
 - **Set to any value**: Integration tests are included
 
 ```bash
-# These are equivalent ways to enable integration tests
+# These are equivalent ways to enable integration tests (all use MINEXUS_ENV=test automatically)
 SLOW_TESTS=1 make test
 SLOW_TESTS=true make test
 SLOW_TESTS=yes make test
@@ -91,24 +103,29 @@ export SLOW_TESTS=1 && make test
 
 ### Daily Development
 ```bash
-# Fast feedback loop during development
+# Fast feedback loop during development (automatically uses MINEXUS_ENV=test)
 make test
 ```
 
 ### Before Committing
 ```bash
-# Comprehensive testing before push
+# Comprehensive testing before push (automatically uses MINEXUS_ENV=test)
 SLOW_TESTS=1 make test
 ```
 
 ### Code Coverage Analysis
 ```bash
-# Check unit test coverage
+# Check unit test coverage (automatically uses MINEXUS_ENV=test)
 make cover
 
-# Check comprehensive coverage
+# Check comprehensive coverage (automatically uses MINEXUS_ENV=test)
 SLOW_TESTS=1 make cover-html
 ```
+
+### Environment Considerations
+- **Test Isolation**: All tests run in test environment to avoid affecting dev/prod configurations
+- **Configuration**: Ensure `.env.test` file exists with appropriate test settings
+- **Database**: Test environment uses separate test database (typically `minexus_test`)
 
 ## CI/CD Integration
 
@@ -127,18 +144,23 @@ jobs:
         with:
           go-version: 1.23.1
       
-      # Unit tests (fast)
+      # Unit tests (fast) - automatically uses MINEXUS_ENV=test
       - name: Run unit tests
         run: make test
       
-      # Integration tests (comprehensive)
+      # Integration tests (comprehensive) - automatically uses MINEXUS_ENV=test
       - name: Run integration tests
         run: SLOW_TESTS=1 make test
         
-      # Coverage report
+      # Coverage report - automatically uses MINEXUS_ENV=test
       - name: Generate coverage
         run: SLOW_TESTS=1 make cover-ci
 ```
+
+**CI Environment Notes:**
+- All test commands automatically use `MINEXUS_ENV=test`
+- Ensure `.env.test` file is available or provide test configuration via environment variables
+- Test database and services are isolated from production
 
 ### Docker-based CI
 
@@ -146,7 +168,7 @@ jobs:
 # For CI environments with Docker support
 - name: Run comprehensive tests
   run: |
-    # Integration tests automatically start Docker services
+    # Integration tests automatically start Docker services and use MINEXUS_ENV=test
     SLOW_TESTS=1 make test
 ```
 
@@ -267,10 +289,12 @@ coverage.html                    # HTML coverage report
 
 ### Environment Management
 
-1. **Use environment variables** - Control test behavior
-2. **Document prerequisites** - Clear setup instructions
-3. **Automate service management** - Reduce manual steps
-4. **Provide cleanup procedures** - Easy environment reset
+1. **Use test environment** - All tests automatically run with `MINEXUS_ENV=test`
+2. **Test configuration** - Ensure `.env.test` exists with proper test settings
+3. **Environment isolation** - Tests don't interfere with dev/prod environments
+4. **Document prerequisites** - Clear setup instructions
+5. **Automate service management** - Reduce manual steps
+6. **Provide cleanup procedures** - Easy environment reset
 
 ### CI/CD Integration
 

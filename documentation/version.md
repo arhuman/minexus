@@ -6,7 +6,7 @@ This document explains how versioning works in the Minexus system, including how
 
 Minexus uses a build-time version injection system that embeds version information directly into the compiled binaries. The version information includes:
 
-- **Version**: Git tag/commit version (e.g., `v1.2.3`, `dev`)
+- **Version**: Git tag/commit version (e.g., `v1.2.3`, `test`)
 - **Git Commit**: Short commit hash (e.g., `abc1234`)
 - **Build Date**: When the binary was compiled (e.g., `2024-01-01_12:00:00`)
 - **Go Version**: Go runtime version used for compilation
@@ -18,7 +18,7 @@ The version handling is centralized in [`internal/version/version.go`](../intern
 ```go
 var (
     // Version is the application version - set by build flags
-    Version = "dev"
+    Version = "test"
     // GitCommit is the git commit hash - set by build flags
     GitCommit = "unknown"
     // BuildDate is the build date - set by build flags
@@ -96,7 +96,7 @@ BUILD_DATE=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 1. **Git Tags**: If you have git tags, version will be based on the latest tag
 2. **Git Commits**: If no tags exist, uses the commit hash
 3. **Dirty State**: Appends `-dirty` if there are uncommitted changes
-4. **No Git**: Falls back to `"dev"` if not in a git repository
+4. **No Git**: Falls back to `"test"` if not in a git repository
 
 ## Setting and Changing Versions
 
@@ -229,7 +229,7 @@ If you build without version flags, defaults are used:
 ```bash
 go build -o nexus ./cmd/nexus/
 ./nexus --version
-# Output: Nexus Version: dev, Commit: unknown, Built: unknown, Go: go1.23.1
+# Output: Nexus Version: test, Commit: unknown, Built: unknown, Go: go1.23.1
 ```
 
 ## Best Practices
@@ -334,7 +334,7 @@ RUN VERSION=$(git describe --tags --always --long --dirty) && \
 
 ## Troubleshooting
 
-### Version Shows as "dev"
+### Version Shows as "test"
 
 **Cause**: No git repository or tags found
 **Solution**: 

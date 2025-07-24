@@ -8,8 +8,19 @@ The configuration system follows a strict priority order:
 
 1. **Command Line Flags** (highest priority)
 2. **Environment Variables**
-3. **Configuration Files** (`.env`)
+3. **Environment-Specific Configuration Files** (`.env.prod`, `.env.test`)
 4. **Default Values** (lowest priority)
+
+## Environment Detection
+
+Minexus uses the `MINEXUS_ENV` environment variable to determine which configuration file to load:
+
+- `MINEXUS_ENV=test` (default) → loads `.env.test`
+- `MINEXUS_ENV=prod` → loads `.env.prod`
+
+**Important:** The system will panic if:
+- `MINEXUS_ENV` contains an invalid value (only `prod`, `test` are allowed)
+- The required environment-specific configuration file is missing
 
 ## Dual-Port Architecture
 
@@ -29,7 +40,7 @@ The unified configuration system is built around the `ConfigLoader` architecture
 
 ```
 ConfigLoader
-├── LoadEnvFile() - Load variables from .env file
+├── LoadEnvironmentFile() - Load variables from environment-specific file
 ├── GetString() - Get string values with priority handling
 ├── GetInt() - Get integer values with validation
 ├── GetBool() - Get boolean values with validation
@@ -158,8 +169,9 @@ type MinionConfig struct {
 
 ## Configuration File Format
 
-The `.env` file supports standard environment variable format:
+Environment-specific configuration files support standard environment variable format:
 
+**Production environment (`.env.prod`):**
 ```bash
 # Nexus server configuration
 NEXUS_SERVER=nexus.example.com
@@ -182,6 +194,7 @@ HEARTBEAT_INTERVAL=60
 # Global settings
 DEBUG=false
 ```
+
 
 **File Format Rules:**
 - Lines starting with `#` are comments
@@ -241,15 +254,50 @@ if err != nil {
 cfg.LogConfig(logger)
 ```
 
+## Building with Environment-Specific Configuration
+
+The `MINEXUS_ENV` variable is embedded into binaries at build time for version information and affects the runtime configuration loading.
+
+### Make Build Targets
+
+```bash
+# Standard build (should default to production)
+make build
+
+# Environment-specific local builds
+make build-prod-local      # Production binaries (nexus-prod, minion-prod, console-prod)
+make build-test-local      # Test binaries (nexus-test, minion-test, console-test)
+
+# Docker builds (for containerized deployment)
+make build-prod           # Production Docker images
+make build-test           # Test Docker images
+```
+
+### Manual Build with Environment Control
+
+```bash
+# Production build (recommended for deployment)
+MINEXUS_ENV=prod go build -ldflags "..." -o nexus-prod ./cmd/nexus/
+
+# Test build
+MINEXUS_ENV=test go build -ldflags "..." -o nexus-test ./cmd/nexus/
+```
+
+**Important Build Considerations:**
+- The `MINEXUS_ENV` value is embedded into the binary at build time
+- Runtime configuration still requires the appropriate `.env.<environment>` file
+- All build targets now default to `MINEXUS_ENV=prod` for consistent production builds
+- Override with `MINEXUS_ENV=test` for non-production builds
+
 ### Custom Configuration Loading
 
 ```go
 // Create a custom loader
 loader := config.NewConfigLoader().WithLogger(logger)
 
-// Load environment file
-if err := loader.LoadEnvFile(".env.production"); err != nil {
-    log.Fatalf("Failed to load env file: %v", err)
+// Load environment-specific file (uses MINEXUS_ENV to determine which file)
+if err := loader.LoadEnvironmentFile(); err != nil {
+    log.Fatalf("Failed to load environment file: %v", err)
 }
 
 // Get values with validation
@@ -278,12 +326,187 @@ export DBHOST=prod-db.example.com
 export DBSSLMODE=require
 ```
 
+## Environment-Specific Configuration
+
+Minexus requires environment-specific configurations using dedicated `.env` files determined by the `MINEXUS_ENV` variable. This enables you to maintain separate configurations for production and test environments.
+
+### Creating Environment-Specific Files
+
+Create environment-specific configuration files from the sample template:
+
+```bash
+# Create production environment configuration (MINEXUS_ENV=prod)
+cp env.sample .env.prod
+
+# Create test environment configuration (MINEXUS_ENV=test)
+cp env.sample .env.test
+```
+
+### Environment File Format
+
+Each environment file follows the same format. The system automatically loads the appropriate file based on `MINEXUS_ENV`:
+
+**Test Environment (`.env.test`):**
+```bash
+# Test-specific settings (default)
+DEBUG=true
+NEXUS_SERVER=localhost
+NEXUS_MINION_PORT=11972
+NEXUS_CONSOLE_PORT=11973
+NEXUS_WEB_PORT=8086
+
+# Test database
+DBHOST=localhost
+DBPORT=5432
+DBUSER=postgres
+DBPASS=postgres
+DBNAME=minexus_test
+DBSSLMODE=disable
+
+# Test-specific minion settings
+MINION_ID=test-minion
+HEARTBEAT_INTERVAL=30
+CONNECT_TIMEOUT=5
+```
+
+**Production Environment (`.env.prod`):**
+```bash
+# Production-specific settings
+DEBUG=false
+NEXUS_SERVER=prod-nexus.example.com
+NEXUS_MINION_PORT=11972
+NEXUS_CONSOLE_PORT=11973
+NEXUS_WEB_PORT=8086
+
+# Production database with SSL
+DBHOST=prod-db.example.com
+DBPORT=5432
+DBUSER=minexus_prod
+DBPASS=secure_production_password
+DBNAME=minexus_prod
+DBSSLMODE=require
+
+# Production-specific minion settings
+MINION_ID=prod-minion-01
+HEARTBEAT_INTERVAL=60
+CONNECT_TIMEOUT=3
+INITIAL_RECONNECT_DELAY=5
+MAX_RECONNECT_DELAY=3600
+```
+
+### Using Environment-Specific Configurations
+
+#### With Docker Compose
+
+Use the environment-specific make targets for Docker deployments. Each target automatically sets `MINEXUS_ENV`:
+
+```bash
+# Production environment (MINEXUS_ENV=prod, uses .env.prod)
+make run-prod    # Uses .env.prod
+make build-prod  # Build with production settings
+make stop-prod   # Stop production environment
+make logs-prod   # View production logs
+
+# Test environment (MINEXUS_ENV=test, uses .env.test)
+make run-test    # Uses .env.test
+make build-test  # Build with test settings
+make stop-test   # Stop test environment
+make logs-test   # View test logs
+```
+
+#### Manual Docker Compose Commands
+
+If you prefer manual control, you can use docker-compose directly with `MINEXUS_ENV`:
+
+```bash
+# Production
+MINEXUS_ENV=prod docker compose up -d
+MINEXUS_ENV=prod docker compose build
+MINEXUS_ENV=prod docker compose down
+
+# Test
+MINEXUS_ENV=test docker compose up -d
+MINEXUS_ENV=test docker compose build
+MINEXUS_ENV=test docker compose down
+```
+
+#### With Binary Execution
+
+Load environment-specific settings before running binaries by setting `MINEXUS_ENV`:
+
+```bash
+# Production
+MINEXUS_ENV=prod ./nexus
+
+# Test (default)
+MINEXUS_ENV=test ./nexus
+
+# Or export for multiple commands
+export MINEXUS_ENV=prod
+./nexus
+./minion
+./console
+```
+
+### Security Considerations
+
+**File Permissions:**
+```bash
+# Restrict access to environment files
+chmod 600 .env.prod .env.test
+```
+
+**Git Exclusion:**
+Environment files are automatically excluded from version control:
+```gitignore
+# Environment-specific configuration files
+.env
+.env.*
+!.env.sample
+```
+
+**Environment Variable Requirements:**
+- Set `MINEXUS_ENV` to control which configuration file is loaded
+- Valid values: `test` (default), `prod`
+- System will panic if invalid value or missing configuration file
+
+**Best Practices:**
+- Never commit environment files with sensitive data
+- Use different database credentials for each environment
+- Enable SSL/TLS in production (`DBSSLMODE=require`)
+- Use strong passwords for production environments
+- Regularly rotate production credentials
+- Consider using external secret management for production
+
+### Environment Validation
+
+The configuration system validates environment-specific settings:
+
+```bash
+# Test configuration loading
+DEBUG=true ./nexus --help  # Shows loaded configuration
+
+# Validate database connection
+./nexus --db-host prod-db.example.com --db-user test_user
+```
+
+### Migration Between Environments
+
+When moving between environments, ensure all required variables are set:
+
+```bash
+# Compare environment files
+diff .env.test .env.prod
+
+# Validate required variables
+grep -E "^[A-Z_]+=.+" .env.prod | wc -l
+```
+
 ## Migration from Legacy System
 
 The unified system maintains backward compatibility:
 
 ### Deprecated Functions
-- `LoadEnvFile()` - Use `ConfigLoader.LoadEnvFile()`
 - `getEnvString()` - Use `ConfigLoader.GetString()`
 - `getEnvInt()` - Use `ConfigLoader.GetInt()`
 - `getEnvBool()` - Use `ConfigLoader.GetBool()`
@@ -291,20 +514,21 @@ The unified system maintains backward compatibility:
 ### Legacy Support
 - All existing environment variables continue to work
 - Command line flags remain unchanged
-- `.env` file format is compatible
 - Legacy database connection string is supported
 
 ## Best Practices
 
 ### Security
-- Never commit `.env` files with sensitive data
+- Never commit environment-specific files (`.env.prod`, `.env.test`) with sensitive data
 - Use environment variables for production secrets
 - Validate all configuration values before use
+- Ensure `MINEXUS_ENV` is set correctly in production environments
 
 ### Development
-- Use `.env` files for local development
+- Use environment-specific files (`.env.prod`, `.env.test`) for development
 - Set reasonable defaults for all values
 - Provide clear error messages for invalid configuration
+- Always set `MINEXUS_ENV` appropriately for your target environment
 
 ### Production
 - Use environment variables for configuration
@@ -327,9 +551,20 @@ The unified system maintains backward compatibility:
 - Ensure ports are within valid ranges (1-65535)
 
 **"Failed to load environment file"**
-- Check that the `.env` file exists and is readable
+- Check that the environment-specific file exists (`.env.prod`, `.env.test`)
+- Verify `MINEXUS_ENV` is set to a valid value (`prod`, `test`)
 - Verify file format (KEY=VALUE)
 - Check for syntax errors in the file
+- Ensure the file is readable with proper permissions
+
+**"Invalid MINEXUS_ENV value"**
+- Verify `MINEXUS_ENV` is set to one of: `prod`, `test`
+- Check for typos in the environment variable value
+
+**"Required environment file not found"**
+- Create the missing environment file: `cp env.sample .env.<environment>`
+- Verify the file exists in the correct location
+- Check file permissions are readable
 
 **"Connection failed"**
 - Verify network addresses are correct and reachable

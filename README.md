@@ -1,12 +1,5 @@
 # Minexus - Distributed Command & Control System
 
-```
-⚠️ This code is not ready for production ⚠️
-The API, features, configuration are subject to changes.
-This software lacks some security features needed for production
-(no minions input sanitization, resource limiting...)
-⚠️ This code is not ready for production ⚠️
-```
 [![Go Report Card](https://goreportcard.com/badge/github.com/arhuman/minexus)](https://goreportcard.com/report/github.com/arhuman/minexus)
 [![Build](https://github.com/arhuman/minexus/actions/workflows/CI.yml/badge.svg)](https://github.com/arhuman/minexus/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -122,9 +115,18 @@ minexus/
 The configuration system follows this priority order (highest to lowest):
 
 1. **Command Line Flags** (highest priority)
-2. **Environment Variables** 
-3. **`.env` File**
+2. **Environment Variables**
+3. **Environment-Specific Configuration Files** (`.env.prod`, `.env.test`)
 4. **Default Values** (lowest priority)
+
+### Environment-Specific Configuration
+
+Minexus uses the `MINEXUS_ENV` environment variable to determine which configuration file to load:
+
+- `MINEXUS_ENV=test` (default) → loads `.env.test`
+- `MINEXUS_ENV=prod` → loads `.env.prod`
+
+**Important:** Environment-specific configuration files are required and the application will fail to start if the appropriate file is missing.
 
 For detailed configuration options, see [documentation/configuration.md](documentation/configuration.md).
 
@@ -232,10 +234,20 @@ For development you also need
 ### Running binaries
 
 ```bash
-# Build all components (embeds TLS certificates)
-go build -o nexus ./cmd/nexus
-go build -o minion ./cmd/minion
-go build -o console ./cmd/console
+# Build all components for production (default - embeds TLS certificates)
+make build                      # Production build (default)
+
+# Individual component builds (production by default)
+make nexus                      # Build nexus server (production)
+make minion                     # Build minion client (production)
+make console                    # Build console REPL (production)
+
+# Override environment for non-production builds
+MINEXUS_ENV=test make build     # Test build
+
+# Environment-specific build targets
+make build-prod-local           # Build production binaries locally
+make build-test-local           # Build test binaries locally
 
 # Start Nexus server with dual-port architecture (TLS is mandatory, certificates embedded in binary)
 # Port 11972 for minions (standard TLS), Port 11973 for console (mTLS)
@@ -248,7 +260,11 @@ nohup ./minion > minion.log &
 ./console
 ```
 
-**Note:** TLS encryption is mandatory and certificates are embedded at build time. No external certificate files are required at runtime.
+**Note:**
+- TLS encryption is mandatory and certificates are embedded at build time
+- The `MINEXUS_ENV` value is embedded into the binary at build time for version information
+- Production builds are recommended for deployment outside Docker
+- No external certificate files are required at runtime
 
 ## Running containers (Docker compose)
 
@@ -331,6 +347,119 @@ curl -O http://localhost:8086/download/console/windows-amd64.exe
 
 For complete web interface documentation, see [documentation/Webserver.md](documentation/Webserver.md).
 
+## Environment-Specific Deployment
+
+Minexus supports environment-specific Docker deployments using dedicated configuration files and make targets. This enables you to maintain separate configurations for development, production, and other environments.
+
+### Setting Up Environment Configurations
+
+Create environment-specific configuration files from the sample:
+
+```bash
+# Create production environment configuration
+cp env.sample .env.prod
+
+# Create test environment configuration
+cp env.sample .env.test
+```
+
+Then customize each environment file with appropriate settings. The `MINEXUS_ENV` variable determines which file is loaded:
+
+**Production (`.env.prod`) example:**
+```bash
+# Production environment - loaded when MINEXUS_ENV=prod
+DEBUG=false
+NEXUS_SERVER=prod-nexus.example.com
+NEXUS_MINION_PORT=11972
+NEXUS_CONSOLE_PORT=11973
+NEXUS_WEB_PORT=8086
+DBHOST=prod-db.example.com
+DBPORT=5432
+DBUSER=minexus_prod
+DBPASS=secure_production_password
+DBNAME=minexus_prod
+DBSSLMODE=require
+```
+
+**Test (`.env.test`) example:**
+```bash
+# Test environment - loaded when MINEXUS_ENV=test (default)
+DEBUG=true
+NEXUS_SERVER=localhost
+NEXUS_MINION_PORT=11972
+NEXUS_CONSOLE_PORT=11973
+NEXUS_WEB_PORT=8086
+DBHOST=localhost
+DBPORT=5432
+DBUSER=postgres
+DBPASS=postgres
+DBNAME=minexus_test
+DBSSLMODE=disable
+```
+
+### Environment-Specific Make Commands
+
+The following make targets provide complete lifecycle management for each environment. Each command automatically sets the appropriate `MINEXUS_ENV` value:
+
+```bash
+# Production Environment (MINEXUS_ENV=prod)
+make run-prod         # Build and run production environment
+make build-prod       # Build Docker images for production
+make stop-prod        # Stop production environment
+make logs-prod        # Follow logs for production environment
+
+# Test Environment (MINEXUS_ENV=test)
+make run-test         # Build and run test environment
+make build-test       # Build Docker images for test
+make stop-test        # Stop test environment
+make logs-test        # Follow logs for test environment
+```
+
+### Manual Environment Control
+
+You can also manually set the environment:
+
+```bash
+# Set environment and run with docker-compose
+export MINEXUS_ENV=prod
+docker compose up -d
+
+# Or set for a single command
+MINEXUS_ENV=test docker compose up -d
+```
+
+### Usage Examples
+
+**Production Deployment:**
+```bash
+# Deploy to production (builds fresh images, stops existing)
+make run-prod
+
+# Monitor production logs
+make logs-prod
+
+# Perform maintenance (stop production)
+make stop-prod
+```
+
+**Build Management:**
+```bash
+# Build only production images (without running)
+make build-prod
+
+# Build only test images (without running)
+make build-test
+```
+
+### Important Notes
+
+- Environment files (`.env.prod`, `.env.test`) are automatically excluded from git
+- Each `run-*` command automatically stops the environment first, then builds and starts
+- The `--remove-orphans` flag ensures clean shutdowns
+- All docker-compose commands use the appropriate environment file via `--env-file`
+- The `MINEXUS_ENV` variable determines which environment configuration is loaded
+- Applications will fail to start if the required environment-specific file is missing
+
 ## Usage Examples
 
 ### Docker Compose Management
@@ -394,8 +523,12 @@ cd minexus
 # Generate protobuf code (if needed)
 make proto
 
-# Build all components
+# Build all components (production by default)
 make build
+
+# Environment-specific builds
+make build-prod-local    # Production binaries
+make build-test-local    # Test binaries
 
 # Run unit tests only (fast)
 make test
@@ -404,28 +537,62 @@ make test
 SLOW_TESTS=1 make test
 ```
 
+### Development vs Production Build Strategy
+
+**Development Workflow (Docker-based):**
+```bash
+# Use Docker for development - automatically handles environment
+make run-prod          # Uses MINEXUS_ENV=prod, loads .env.prod
+make run-test          # Uses MINEXUS_ENV=test, loads .env.test
+```
+
+**Production Deployment (Binary-based):**
+```bash
+# Build production binaries for deployment
+make build-prod-local  # Creates nexus-prod, minion-prod, console-prod
+# or
+MINEXUS_ENV=prod make build
+
+# Deploy with production environment
+MINEXUS_ENV=prod ./nexus-prod
+```
+
+**Important Build Notes:**
+- `MINEXUS_ENV` is embedded into binaries at build time for version tracking
+- Runtime still requires appropriate `.env.<environment>` configuration file
+- Docker workflows automatically handle environment setup
+- Binary deployments need explicit environment configuration
+
+✅ **Build Environment Fixed**: All build targets now properly default to `MINEXUS_ENV=prod` for consistent production builds:
+- `make build` - Builds all components (production)
+- `make nexus` - Individual nexus build (production)
+- `make minion` - Individual minion build (production)
+- `make console` - Individual console build (production)
+
+Override with `MINEXUS_ENV=test` for non-production builds.
+
 ### Testing
 
 The project uses a conditional testing system that separates fast unit tests from slower integration tests:
 
 #### Unit Tests (Default)
 ```bash
-# Run unit tests only - fast, no external dependencies
+# Run unit tests only - fast, no external dependencies (runs in test environment)
 make test
 
-# Generate coverage report for unit tests
+# Generate coverage report for unit tests (runs in test environment)
 make cover
 ```
 
 #### Integration Tests (Conditional)
 ```bash
-# Run all tests including integration tests - requires Docker services
+# Run all tests including integration tests - requires Docker services (runs in test environment)
 SLOW_TESTS=1 make test
 
-# Generate coverage report including integration tests
+# Generate coverage report including integration tests (runs in test environment)
 SLOW_TESTS=1 make cover
 
-# View detailed coverage in browser
+# View detailed coverage in browser (runs in test environment)
 SLOW_TESTS=1 make cover-html
 ```
 
@@ -435,15 +602,21 @@ SLOW_TESTS=1 make cover-html
 - Use `make test` for frequent testing during development (fast feedback)
 - Use `SLOW_TESTS=1 make test` before committing changes (comprehensive testing)
 - Integration tests automatically start required Docker services
+- **All test commands automatically run in the test environment** (`MINEXUS_ENV=test`)
 
 **CI/CD Workflow:**
 ```bash
-# For CI pipelines - includes integration tests and generates coverage
+# For CI pipelines - includes integration tests and generates coverage (runs in test environment)
 make cover-ci
 
-# For release builds - comprehensive testing with audit
+# For release builds - comprehensive testing with audit (runs in test environment)
 make release
 ```
+
+**Test Environment:**
+- All test-related Make targets (`test`, `cover`, `cover-ci`, `test-integration`, `audit`) automatically use `MINEXUS_ENV=test`
+- This ensures tests use the test configuration file (`.env.test`) for consistent test behavior
+- No manual environment setting required for testing
 
 **Environment Variables:**
 - `SLOW_TESTS=1` - Enables integration tests that require Docker services

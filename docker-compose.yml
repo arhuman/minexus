@@ -4,8 +4,9 @@ services:
     container_name: nexus_db
     restart: always
     env_file:
-      - .env
+      - .env.${MINEXUS_ENV:-test}
     environment:
+      - MINEXUS_ENV=${MINEXUS_ENV:-test}
       - POSTGRES_USER=${DBUSER}
       - POSTGRES_PASSWORD=${DBPASS}
       - POSTGRES_DB=${DBNAME}
@@ -29,9 +30,8 @@ services:
       dockerfile: Dockerfile.nexus
     container_name: nexus_server
     restart: always
-    env_file:
-      - .env
     environment:
+      - MINEXUS_ENV=${MINEXUS_ENV:-test}
       - DEBUG=${DEBUG:-false}
       - NEXUS_MINION_PORT=${NEXUS_MINION_PORT:-11972}
       - NEXUS_CONSOLE_PORT=${NEXUS_CONSOLE_PORT:-11973}
@@ -64,9 +64,8 @@ services:
       dockerfile: Dockerfile.minion
     container_name: minion
     restart: always
-    env_file:
-      - .env
     environment:
+      - MINEXUS_ENV=${MINEXUS_ENV:-test}
       - DEBUG=true
       - MINION_ID=${MINION_ID:-docker-minion}
       - NEXUS_SERVER=nexus_server
@@ -87,9 +86,8 @@ services:
       context: .
       dockerfile: Dockerfile.console
     container_name: minexus_console
-    env_file:
-      - .env
     environment:
+      - MINEXUS_ENV=${MINEXUS_ENV:-test}
       - DEBUG=${DEBUG:-false}
       - NEXUS_SERVER=nexus_server
       - NEXUS_CONSOLE_PORT=${NEXUS_CONSOLE_PORT:-11973}

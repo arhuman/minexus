@@ -1,4 +1,7 @@
 
+# Default environment for builds
+MINEXUS_ENV ?= prod
+
 VERSION=$(shell git describe --tags --always --long --dirty)
 COMMIT=$(shell git rev-parse --short HEAD)
 BUILD_DATE=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
@@ -25,7 +28,7 @@ else
 endif
 
 # Build flags for version injection
-LDFLAGS=-ldflags "-X minexus/internal/version.Version=$(VERSION) -X minexus/internal/version.GitCommit=$(COMMIT) -X minexus/internal/version.BuildDate=$(BUILD_DATE)"
+LDFLAGS=-ldflags "-X github.com/arhuman/minexus/internal/version.Version=$(VERSION) -X github.com/arhuman/minexus/internal/version.GitCommit=$(COMMIT) -X github.com/arhuman/minexus/internal/version.BuildDate=$(BUILD_DATE) -X github.com/arhuman/minexus/internal/version.BuildEnv=$(MINEXUS_ENV)"
 
 PROTO_DIR=proto
 OUT_DIR_GO=protogen
@@ -50,47 +53,47 @@ audit:
 	go vet ./...
 	go run honnef.co/go/tools/cmd/staticcheck@latest -checks=all,-ST1000,-U1000 ./...
 	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
-	go test -race -buildvcs -vet=off ./...
+	MINEXUS_ENV=test go test -race -buildvcs -vet=off ./...
 
 ## doc: make documentation
 .PHONY: doc
 doc:
 	swag init --parseDependency --parseInternal --parseDepth 2 -g cmd/nexus/nexus.go
 
-## build: build the binary for current platform
+## build: build the binary for current platform (production environment)
 .PHONY: build
 build:
-	@echo "Building for detected platform: $(HOST_OS)/$(HOST_ARCH)"
-	GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o nexus ./cmd/nexus/
-	GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o minion ./cmd/minion/
-	GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o console ./cmd/console/
+	@echo "Building for detected platform: $(HOST_OS)/$(HOST_ARCH) (production)"
+	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o nexus ./cmd/nexus/
+	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o minion ./cmd/minion/
+	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o console ./cmd/console/
 	@echo "Build complete"
 
 ## build_darwin: build binaries for macOS (amd64)
 .PHONY: build_darwin
 build_darwin:
-	@echo "Building for macOS (amd64)..."
-	GOARCH=amd64 GOOS=darwin go build $(LDFLAGS) -o nexus-darwin ./cmd/nexus/
-	GOARCH=amd64 GOOS=darwin go build $(LDFLAGS) -o minion-darwin ./cmd/minion/
-	GOARCH=amd64 GOOS=darwin go build $(LDFLAGS) -o console-darwin ./cmd/console/
+	@echo "Building for macOS (amd64) (production)..."
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=darwin go build $(LDFLAGS) -o nexus-darwin ./cmd/nexus/
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=darwin go build $(LDFLAGS) -o minion-darwin ./cmd/minion/
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=darwin go build $(LDFLAGS) -o console-darwin ./cmd/console/
 	@echo "macOS build complete"
 
 ## build_linux: build binaries for Linux (amd64)
 .PHONY: build_linux
 build_linux:
-	@echo "Building for Linux (amd64)..."
-	GOARCH=amd64 GOOS=linux go build $(LDFLAGS) -o nexus-linux ./cmd/nexus/
-	GOARCH=amd64 GOOS=linux go build $(LDFLAGS) -o minion-linux ./cmd/minion/
-	GOARCH=amd64 GOOS=linux go build $(LDFLAGS) -o console-linux ./cmd/console/
+	@echo "Building for Linux (amd64) (production)..."
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=linux go build $(LDFLAGS) -o nexus-linux ./cmd/nexus/
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=linux go build $(LDFLAGS) -o minion-linux ./cmd/minion/
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=linux go build $(LDFLAGS) -o console-linux ./cmd/console/
 	@echo "Linux build complete"
 
 ## build_windows: build binaries for Windows (amd64)
 .PHONY: build_windows
 build_windows:
-	@echo "Building for Windows (amd64)..."
-	GOARCH=amd64 GOOS=windows go build $(LDFLAGS) -o nexus-windows.exe ./cmd/nexus/
-	GOARCH=amd64 GOOS=windows go build $(LDFLAGS) -o minion-windows.exe ./cmd/minion/
-	GOARCH=amd64 GOOS=windows go build $(LDFLAGS) -o console-windows.exe ./cmd/console/
+	@echo "Building for Windows (amd64) (production)..."
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=windows go build $(LDFLAGS) -o nexus-windows.exe ./cmd/nexus/
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=windows go build $(LDFLAGS) -o minion-windows.exe ./cmd/minion/
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=windows go build $(LDFLAGS) -o console-windows.exe ./cmd/console/
 	@echo "Windows build complete"
 
 ## build_all_platforms: build for all platforms
@@ -129,6 +132,74 @@ compose_stop:
 ## local: launch docker-compose env
 local: compose_run
 
+# ==================================================================================== #
+# DOCKER & RUN COMMANDS (Environment-Specific)
+# ==================================================================================== #
+
+## build-prod: Build Docker images for the production environment
+.PHONY: build-prod
+build-prod:
+	@echo "Building Docker images for PROD environment..."
+	MINEXUS_ENV=prod docker compose build
+
+## build-test: Build Docker images for the test environment
+.PHONY: build-test
+build-test:
+	@echo "Building Docker images for TEST environment..."
+	MINEXUS_ENV=test docker compose build
+
+## build-prod-local: Build binaries for production environment locally
+.PHONY: build-prod-local
+build-prod-local:
+	@echo "Building binaries for PROD environment..."
+	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o nexus-prod ./cmd/nexus/
+	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o minion-prod ./cmd/minion/
+	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o console-prod ./cmd/console/
+
+## build-test-local: Build binaries for test environment locally
+.PHONY: build-test-local
+build-test-local:
+	@echo "Building binaries for TEST environment..."
+	MINEXUS_ENV=test GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o nexus-test ./cmd/nexus/
+	MINEXUS_ENV=test GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o minion-test ./cmd/minion/
+	MINEXUS_ENV=test GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o console-test ./cmd/console/
+
+## run-prod: Run the application in production mode (builds first)
+.PHONY: run-prod
+run-prod: stop-prod build-prod
+	@echo "Starting application in PROD mode..."
+	MINEXUS_ENV=prod docker compose up -d
+
+## run-test: Run the application in test mode (builds first)
+.PHONY: run-test
+run-test: stop-test build-test
+	@echo "Starting application in TEST mode..."
+	MINEXUS_ENV=test docker compose up -d
+
+## stop-prod: Stop production environment services
+.PHONY: stop-prod
+stop-prod:
+	@echo "Stopping PROD environment..."
+	MINEXUS_ENV=prod docker compose down --remove-orphans
+
+## stop-test: Stop test environment services
+.PHONY: stop-test
+stop-test:
+	@echo "Stopping TEST environment..."
+	MINEXUS_ENV=test docker compose down --remove-orphans
+
+## logs-prod: Follow logs for the production environment
+.PHONY: logs-prod
+logs-prod:
+	@echo "Following logs for PROD environment..."
+	MINEXUS_ENV=prod docker compose logs -f
+
+## logs-test: Follow logs for the test environment
+.PHONY: logs-test
+logs-test:
+	@echo "Following logs for TEST environment..."
+	MINEXUS_ENV=test docker compose logs -f
+
 ## release: test build and audit current code (includes integration tests)
 release:
 	SLOW_TESTS=1 $(MAKE) test
@@ -144,7 +215,7 @@ test:
 	@echo "Copying test certificates..."
 	@cp -R internal/certs/files/test/* internal/certs/files/
 	go run honnef.co/go/tools/cmd/staticcheck@latest -checks=all,-ST1000,-U1000 ./...
-	./run_tests.sh
+	MINEXUS_ENV=test ./run_tests.sh
 
 ## cover: run tests with coverage and display detailed results (set SLOW_TESTS=1 to include integration tests)
 .PHONY: cover
@@ -154,7 +225,7 @@ cover:
 	else \
 		echo "Running tests with detailed coverage analysis (unit tests only)..."; \
 	fi
-	@SLOW_TESTS=$$SLOW_TESTS ./run_tests.sh
+	@MINEXUS_ENV=test SLOW_TESTS=$$SLOW_TESTS ./run_tests.sh
 	@if [ -f coverage.out ]; then \
 		echo ""; \
 		echo "=== DETAILED COVERAGE BY PACKAGE ==="; \
@@ -190,7 +261,7 @@ cover-clean:
 ## cover-ci: run coverage for CI/CD (outputs coverage percentage, includes integration tests)
 .PHONY: cover-ci
 cover-ci:
-	@SLOW_TESTS=1 go test -coverprofile=coverage.out ./... -v > /dev/null 2>&1
+	@MINEXUS_ENV=test SLOW_TESTS=1 go test -coverprofile=coverage.out ./... -v > /dev/null 2>&1
 	@if [ -f coverage.out ]; then \
 		TOTAL=$$(go tool cover -func=coverage.out | grep "total:" | awk '{print $$3}'); \
 		echo "$$TOTAL"; \
@@ -203,7 +274,7 @@ cover-ci:
 test-integration:
 	@echo "Running integration tests with Docker services..."
 	@cp -R internal/certs/files/test/* internal/certs/files/
-	SLOW_TESTS=1 go test -v ./... -run TestIntegration
+	MINEXUS_ENV=test SLOW_TESTS=1 go test -v ./... -run TestIntegration
 
 ## grpc: generate gRPC code
 .PHONY: grpc
@@ -226,20 +297,20 @@ grpc:
 
 	@echo "gRPC code generation complete."
 
-## nexus: build nexus server
+## nexus: build nexus server (production environment)
 .PHONY: nexus
 nexus:
-	go build $(LDFLAGS) -o nexus ./cmd/nexus/
+	MINEXUS_ENV=prod go build $(LDFLAGS) -o nexus ./cmd/nexus/
 
-## minion: build minion client
+## minion: build minion client (production environment)
 .PHONY: minion
 minion:
-	go build $(LDFLAGS) -o minion ./cmd/minion/
+	MINEXUS_ENV=prod go build $(LDFLAGS) -o minion ./cmd/minion/
 
-## console: build console REPL
+## console: build console REPL (production environment)
 .PHONY: console
 console:
-	go build $(LDFLAGS) -o console ./cmd/console/
+	MINEXUS_ENV=prod go build $(LDFLAGS) -o console ./cmd/console/
 
 ## build-all: build all binaries
 .PHONY: build-all
@@ -252,11 +323,21 @@ help:
 	@echo ${MAKEFILE_LIST}
 	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' |  sed -e 's/^/ /'
 	@echo ''
-	@echo 'Testing Commands:'
-	@echo '  make test                - Run unit tests with coverage'
-	@echo '  SLOW_TESTS=1 make test   - Run all tests including integration tests'
-	@echo '  make cover               - Run tests with detailed coverage analysis'
-	@echo '  SLOW_TESTS=1 make cover  - Run coverage analysis including integration tests'
+	@echo 'Testing Commands (run in test environment):'
+	@echo '  make test                - Run unit tests with coverage (MINEXUS_ENV=test)'
+	@echo '  SLOW_TESTS=1 make test   - Run all tests including integration tests (MINEXUS_ENV=test)'
+	@echo '  make cover               - Run tests with detailed coverage analysis (MINEXUS_ENV=test)'
+	@echo '  SLOW_TESTS=1 make cover  - Run coverage analysis including integration tests (MINEXUS_ENV=test)'
+	@echo ''
+	@echo 'Environment-Specific Docker Commands:'
+	@echo '  make run-prod            - Build and run production environment'
+	@echo '  make run-test            - Build and run test environment'
+	@echo '  make build-prod          - Build Docker images for production'
+	@echo '  make build-test          - Build Docker images for test'
+	@echo '  make stop-prod           - Stop production environment'
+	@echo '  make stop-test           - Stop test environment'
+	@echo '  make logs-prod           - Follow logs for production environment'
+	@echo '  make logs-test           - Follow logs for test environment'
 	@echo ''
 	@echo 'Environment Variables:'
 	@echo '  SLOW_TESTS=1             - Include integration tests (requires Docker services)'
