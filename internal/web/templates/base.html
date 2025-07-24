@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - Minexus</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/theme.css">
+    <link rel="icon" href="/static/images/favicon.ico">
+</head>
+
+<body>
+    <header>
+        <nav>
+            <img src="/static/images/logo.svg" alt="Minexus" class="logo">
+            <h1>{{.Title}}</h1>
+        </nav>
+    </header>
+    <main>
+        {{template "content" .}}
+    </main>
+    <footer>
+        <p>Minexus v{{.Version}} | Uptime: {{.Uptime}}</p>
+    </footer>
+    <script src="/static/js/api.js"></script>
+    {{template "scripts" .}}
+</body>
+
+</html>
