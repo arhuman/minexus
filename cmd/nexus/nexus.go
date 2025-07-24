@@ -18,6 +18,7 @@ import (
 	"github.com/arhuman/minexus/internal/logging"
 	"github.com/arhuman/minexus/internal/nexus"
 	"github.com/arhuman/minexus/internal/version"
+	"github.com/arhuman/minexus/internal/web"
 	pb "github.com/arhuman/minexus/protogen"
 
 	"go.uber.org/zap"
@@ -57,7 +58,7 @@ func main() {
 	defer logging.FuncExit(logger, start)
 
 	// Display version information
-	logger.Info("Starting Nexus with dual-port architecture", zap.String("version", version.Component("Nexus")))
+	logger.Info("Starting Nexus with triple-server architecture", zap.String("version", version.Component("Nexus")))
 
 	// Log the configuration (with sensitive data masked)
 	cfg.LogConfig(logger)
@@ -104,11 +105,11 @@ func main() {
 	reflection.Register(minionServer)
 	reflection.Register(consoleServer)
 
-	// Start both servers concurrently
+	// Start all three servers concurrently
 	var wg sync.WaitGroup
 	var serverReady sync.WaitGroup
-	wg.Add(2)
-	serverReady.Add(2)
+	wg.Add(3)
+	serverReady.Add(3)
 
 	// Start minion server
 	go func() {
@@ -148,12 +149,39 @@ func main() {
 		}
 	}()
 
-	// Wait for both servers to be ready
+	// Start web server
+	go func() {
+		defer wg.Done()
+		logger.Info("Web server starting (HTTP)",
+			zap.Int("port", cfg.WebPort),
+			zap.Bool("enabled", cfg.WebEnabled))
+
+		// Signal server is about to start
+		go func() {
+			time.Sleep(100 * time.Millisecond) // Brief delay for server to initialize
+			if cfg.WebEnabled {
+				logger.Info("Web server ready for connections", zap.Int("port", cfg.WebPort))
+			} else {
+				logger.Info("Web server disabled")
+			}
+			serverReady.Done()
+		}()
+
+		if err := web.StartWebServer(cfg, nexusServer, logger); err != nil {
+			if cfg.WebEnabled {
+				logger.Error("Web server failed", zap.Error(err))
+			}
+		}
+	}()
+
+	// Wait for all three servers to be ready
 	go func() {
 		serverReady.Wait()
-		logger.Info("🚀 NEXUS FULLY READY - Both minion and console servers accepting connections",
+		logger.Info("🚀 NEXUS FULLY READY - All servers accepting connections",
 			zap.Int("minion_port", cfg.MinionPort),
-			zap.Int("console_port", cfg.ConsolePort))
+			zap.Int("console_port", cfg.ConsolePort),
+			zap.Int("web_port", cfg.WebPort),
+			zap.Bool("web_enabled", cfg.WebEnabled))
 	}()
 
 	// Set up graceful shutdown
@@ -161,9 +189,9 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Info("Shutting down both gRPC servers...")
+	logger.Info("Shutting down all servers...")
 
-	// Gracefully stop both servers
+	// Gracefully stop all servers
 	go func() {
 		logger.Info("Stopping minion server...")
 		minionServer.GracefulStop()
@@ -174,7 +202,12 @@ func main() {
 		consoleServer.GracefulStop()
 	}()
 
-	// Wait for both servers to finish
+	go func() {
+		logger.Info("Stopping web server...")
+		// Web server shutdown is handled by process termination
+	}()
+
+	// Wait for all servers to finish
 	wg.Wait()
 	logger.Info("All servers stopped")
 }

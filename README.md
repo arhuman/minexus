@@ -49,6 +49,7 @@ It's current features include:
 
 - **gRPC Communication**: High-performance, cross-platform RPC
 - **TLS Encryption**: Secure communication between all components
+- **Web Interface**: User-friendly HTTP dashboard and REST API
 - **Tag-based Targeting**: Flexible minion selection using tags
 - **Real-time Command Streaming**: Live command delivery to minions
 - **Command Result Tracking**: Complete audit trail of command execution
@@ -163,11 +164,16 @@ make build
 ```
 ┌─────────────┐    gRPC     ┌─────────────┐    PostgreSQL    ┌──────────────┐
 │   Console   │◄───────────►│    Nexus    │◄─────────────────│   Database   │
-│   Client    │             │   Server    │                  │              │
-└─────────────┘             └─────────────┘                  └──────────────┘
+│   Client    │   (mTLS)    │   Server    │                  │              │
+└─────────────┘   :11973    │             │                  └──────────────┘
+                             │  Triple-    │
+┌─────────────┐    HTTP      │  Server     │
+│ Web Browser │◄───────────►│ Architecture│
+│  Dashboard  │   :8086     │             │
+└─────────────┘             └─────────────┘
                                    ▲
-                              gRPC │
-                                   │
+                              gRPC │ (TLS)
+                                   │ :11972
                      ┌─────────────┼─────────────┐
                      │             │             │
                      ▼             ▼             ▼
@@ -177,6 +183,14 @@ make build
               └─────────────┘ └─────────────┘ └─────────────┘
 ```
 
+### Triple-Server Architecture
+
+The Nexus server runs three concurrent services:
+
+- **Minion Server** (port 11972): TLS gRPC server for minion connections
+- **Console Server** (port 11973): mTLS gRPC server for console connections
+- **Web Server** (port 8086): HTTP server for web interface and REST API
+
 
 ## Documentation
 
@@ -184,6 +198,7 @@ More documentation is available in the [`documentation/`](documentation/) direct
 
 - **[adding_commands.md](documentation/adding_commands.md)** - Developer oriented guide to add commands to Minexus
 - **[configuration.md](documentation/configuration.md)** - Complete configuration guide for all components
+- **[Webserver.md](documentation/Webserver.md)** - Web interface and REST API documentation
 - **[version.md](documentation/version.md)** - Version handling, building, and querying guide
 - **[commands.md](documentation/commands.md)** - Complete guide to all console and minion commands
 - **[testing.md](documentation/testing.md)** - Comprehensive testing guide and best practices
@@ -264,9 +279,10 @@ docker compose down
 ### Service Overview
 
 - **nexus_db**: PostgreSQL database with automatic schema initialization
-- **nexus**: Nexus server with dual-port architecture:
+- **nexus**: Nexus server with triple-server architecture:
   - **Port 11972** (`NEXUS_MINION_PORT`) - Minion connections with standard TLS
   - **Port 11973** (`NEXUS_CONSOLE_PORT`) - Console connections with mutual TLS (mTLS)
+  - **Port 8086** (`NEXUS_WEB_PORT`) - Web interface and REST API over HTTP
 - **minion**: Single minion client that connects to nexus using `NEXUS_SERVER` + `NEXUS_MINION_PORT`
 - **console**: Interactive console client that connects using `NEXUS_SERVER` + `NEXUS_CONSOLE_PORT` (optional, use `--profile console`)
 
@@ -288,6 +304,32 @@ docker compose --profile console up
 # Or attach to running console
 docker compose exec console /app/console
 ```
+
+### Web Interface Access
+
+The web interface provides a user-friendly dashboard and REST API for monitoring and managing your Minexus infrastructure:
+
+```bash
+# Access the web dashboard (when nexus is running)
+open http://localhost:8086
+
+# Or use the REST API directly
+curl http://localhost:8086/api/status
+curl http://localhost:8086/api/minions
+curl http://localhost:8086/api/health
+
+# Download pre-built binaries
+curl -O http://localhost:8086/download/minion/linux-amd64
+curl -O http://localhost:8086/download/console/windows-amd64.exe
+```
+
+**Web Interface Features:**
+- **Dashboard**: Real-time system status, connected minions, and server health
+- **REST API**: Programmatic access to system information
+- **Binary Downloads**: Direct access to pre-built minion and console binaries
+- **Monitoring**: Standard HTTP endpoints for integration with monitoring tools
+
+For complete web interface documentation, see [documentation/Webserver.md](documentation/Webserver.md).
 
 ## Usage Examples
 

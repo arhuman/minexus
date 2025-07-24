@@ -323,8 +323,11 @@ type ConsoleConfig struct {
 
 // NexusConfig holds configuration for the Nexus server
 type NexusConfig struct {
-	MinionPort  int // Port for minion connections with standard TLS
-	ConsolePort int // Port for console connections with mTLS
+	MinionPort  int    // Port for minion connections with standard TLS
+	ConsolePort int    // Port for console connections with mTLS
+	WebPort     int    // Port for HTTP web server
+	WebEnabled  bool   // Enable/disable web server
+	WebRoot     string // Path to webroot directory (for file system assets)
 	DBHost      string
 	DBPort      int
 	DBUser      string
@@ -363,6 +366,9 @@ func DefaultNexusConfig() *NexusConfig {
 	return &NexusConfig{
 		MinionPort:  11972,
 		ConsolePort: 11973,
+		WebPort:     8086,
+		WebEnabled:  true,
+		WebRoot:     "./webroot",
 		DBHost:      "localhost",
 		DBPort:      5432,
 		DBUser:      "postgres",
@@ -513,6 +519,23 @@ func LoadNexusConfig() (*NexusConfig, error) {
 		config.ConsolePort = consolePort
 	}
 
+	// Load and validate web port
+	if webPort, err := loader.GetIntInRange("NEXUS_WEB_PORT", config.WebPort, 0, 65535); err != nil {
+		validationErrors = append(validationErrors, err)
+	} else {
+		config.WebPort = webPort
+	}
+
+	// Load web enabled flag
+	if webEnabled, err := loader.GetBool("NEXUS_WEB_ENABLED", config.WebEnabled); err != nil {
+		validationErrors = append(validationErrors, err)
+	} else {
+		config.WebEnabled = webEnabled
+	}
+
+	// Load web root directory
+	config.WebRoot = loader.GetString("NEXUS_WEB_ROOT", config.WebRoot)
+
 	// Load database configuration
 	config.DBHost = loader.GetString("DBHOST", config.DBHost)
 	if err := loader.ValidateRequired("DBHOST", config.DBHost); err != nil {
@@ -550,6 +573,9 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	// Parse command line flags (highest priority)
 	minionPort := flag.Int("minion-port", config.MinionPort, "Port to listen on for minion connections")
 	consolePort := flag.Int("console-port", config.ConsolePort, "Console port for mTLS connections")
+	webPort := flag.Int("web-port", config.WebPort, "Port for HTTP web server")
+	webEnabled := flag.Bool("web-enabled", config.WebEnabled, "Enable/disable web server")
+	webRoot := flag.String("web-root", config.WebRoot, "Path to webroot directory")
 	dbHost := flag.String("db-host", config.DBHost, "Database host")
 	dbPort := flag.Int("db-port", config.DBPort, "Database port")
 	dbUser := flag.String("db-user", config.DBUser, "Database user")
@@ -582,6 +608,21 @@ func LoadNexusConfig() (*NexusConfig, error) {
 	} else {
 		config.ConsolePort = *consolePort
 	}
+
+	// Apply and validate web port
+	if *webPort < 0 || *webPort > 65535 {
+		validationErrors = append(validationErrors, ValidationError{
+			Field:   "web-port",
+			Value:   strconv.Itoa(*webPort),
+			Message: "must be between 0 and 65535 (0 for system-assigned)",
+		})
+	} else {
+		config.WebPort = *webPort
+	}
+
+	// Apply web enabled flag and web root
+	config.WebEnabled = *webEnabled
+	config.WebRoot = *webRoot
 
 	config.DBHost = *dbHost
 	config.DBPort = *dbPort
@@ -805,6 +846,9 @@ func (c *NexusConfig) LogConfig(logger *zap.Logger) {
 	logger.Info("Configuration loaded",
 		zap.Int("minion_port", c.MinionPort),
 		zap.Int("console_port", c.ConsolePort),
+		zap.Int("web_port", c.WebPort),
+		zap.Bool("web_enabled", c.WebEnabled),
+		zap.String("web_root", c.WebRoot),
 		zap.String("db_host", c.DBHost),
 		zap.Int("db_port", c.DBPort),
 		zap.String("db_name", c.DBName),
