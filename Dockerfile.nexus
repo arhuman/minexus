@@ -41,6 +41,9 @@ WORKDIR /app
 # Copy the binary from builder
 COPY --from=builder /app/nexus /app/nexus
 
+# Copy webroot directory for web server assets
+COPY webroot/ /app/webroot/
+
 # Create entrypoint script
 RUN echo '#!/bin/sh\n/app/nexus' > /app/docker-entrypoint.sh && \
     chmod +x /app/docker-entrypoint.sh
@@ -51,7 +54,7 @@ RUN chgrp -R 0 /app && chmod -R g=u /app
 # Switch to non-root user
 USER 1001
 
-# Expose the default gRPC port
-EXPOSE 11972
+# Expose the default gRPC ports and web server port
+EXPOSE 11972 11973 8086
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

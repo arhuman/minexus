@@ -41,6 +41,45 @@ The [`NexusConfig`](../internal/config/config.go) struct includes:
 - `WebEnabled bool` - Enable/disable web server (default: true)
 - `WebRoot string` - Path to webroot directory (default: "./webroot")
 
+## Docker Usage
+
+The web server is automatically included when running Minexus with Docker Compose:
+
+```bash
+# Start all services including web server
+docker compose up -d
+
+# Access web interface at http://localhost:8086
+```
+
+**Port Configuration:**
+- The web server port is exposed and configurable via `NEXUS_WEB_PORT` environment variable
+- Default port: 8086
+- The port is automatically mapped from container to host
+
+**Environment Variables:**
+Configure in your `.env` file:
+```env
+# Web server port (mapped to host)
+NEXUS_WEB_PORT=8086
+# Enable/disable web server
+NEXUS_WEB_ENABLED=true
+# Web assets directory
+NEXUS_WEB_ROOT=webroot
+```
+
+**Docker Health Check:**
+The nexus_server container health check verifies all three ports are accessible:
+- NEXUS_MINION_PORT (default: 11972) - gRPC minions
+- NEXUS_CONSOLE_PORT (default: 11973) - gRPC console
+- NEXUS_WEB_PORT (default: 8086) - HTTP web server
+
+**Accessing the Web Interface:**
+After `docker compose up`, the web interface will be available at:
+- Dashboard: http://localhost:8086/
+- API Health: http://localhost:8086/api/health
+- Downloads: http://localhost:8086/download/
+
 ## Web Interface Features
 
 ### Dashboard (`GET /`)
@@ -179,13 +218,15 @@ API endpoints support cross-origin requests:
 
 ## Implementation Details
 
-### Embedded Assets
+### File System Assets
 
-The web server uses embedded static assets and templates:
+The web server uses file system assets for maximum flexibility:
 
-- Templates: [`internal/web/templates/`](../internal/web/templates/)
-- Static assets: [`internal/web/static/`](../internal/web/static/)
-- Assets are compiled into the binary at build time
+- Templates: [`webroot/templates/`](../webroot/templates/)
+- Static assets: [`webroot/static/`](../webroot/static/)
+- Assets are loaded from the file system at runtime
+- Webroot directory can be customized via `NEXUS_WEB_ROOT` configuration
+- Allows for easy customization without recompiling the binary
 
 ### Data Integration
 
@@ -289,7 +330,7 @@ go test ./internal/web -v
 
 ### Development Benefits
 - **Optional Feature** - Can be disabled without affecting gRPC functionality
-- **Embedded Assets** - No external dependencies for web interface
+- **File System Assets** - Easy customization without recompiling
 - **Comprehensive Testing** - Full test coverage for reliability
 - **Real-time Data** - Live integration with nexus server state
 
