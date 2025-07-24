@@ -1,0 +1,56 @@
+{{define "content"}}
+<div class="dashboard">
+    <div class="status-grid">
+        <div class="status-card">
+            <h2>System Status</h2>
+            <div class="status-indicator {{.SystemStatus}}">{{.SystemStatus}}</div>
+            <p>Version: {{.Version}}</p>
+            <p>Uptime: {{.Uptime}}</p>
+        </div>
+
+        <div class="status-card">
+            <h2>Connected Minions</h2>
+            <div class="minion-count">{{.MinionCount}}</div>
+            <div class="minion-list">
+                {{range .Minions}}
+                <div class="minion-item">
+                    <span class="minion-id">{{.ID}}</span>
+                    <span class="minion-status {{.Status}}">{{.Status}}</span>
+                </div>
+                {{end}}
+            </div>
+        </div>
+
+        <div class="status-card">
+            <h2>Server Ports</h2>
+            <div class="port-list">
+                <div class="port-item">
+                    <span>Minion (gRPC): {{.MinionPort}}</span>
+                    <span class="status-dot running"></span>
+                </div>
+                <div class="port-item">
+                    <span>Console (mTLS): {{.ConsolePort}}</span>
+                    <span class="status-dot running"></span>
+                </div>
+                <div class="port-item">
+                    <span>Web (HTTP): {{.WebPort}}</span>
+                    <span class="status-dot running"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="status-card">
+            <h2>Quick Actions</h2>
+            <div class="action-buttons">
+                <a href="/download/" class="btn primary">Download Binaries</a>
+                <a href="/api/status" class="btn secondary">API Status</a>
+                <a href="/api/minions" class="btn secondary">Minions API</a>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script src="/static/js/dashboard.js"></script>
+{{end}}
