@@ -58,3 +58,13 @@ func EnvironmentInfo() string {
 
 	return fmt.Sprintf("Environment: build=%s, runtime=%s", buildEnv, runtimeEnv)
 }
+
+// CheckAndHandleVersionFlag checks if version flag was provided and prints version if so.
+// Returns true if version flag was handled, false otherwise.
+func CheckAndHandleVersionFlag(componentName string) bool {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Printf("%s %s\n", componentName, Info())
+		return true
+	}
+	return false
+}

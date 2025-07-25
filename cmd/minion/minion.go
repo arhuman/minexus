@@ -25,27 +25,6 @@ import (
 	"google.golang.org/grpc/keepalive"
 )
 
-// setupLogger creates and configures a logger based on debug setting
-func setupLogger(debug bool) (*zap.Logger, zap.AtomicLevel, error) {
-	var logger *zap.Logger
-	var atom zap.AtomicLevel
-	var err error
-
-	if debug {
-		atom = zap.NewAtomicLevelAt(zap.DebugLevel)
-		config := zap.NewDevelopmentConfig()
-		config.Level = atom
-		logger, err = config.Build()
-	} else {
-		atom = zap.NewAtomicLevelAt(zap.InfoLevel)
-		config := zap.NewProductionConfig()
-		config.Level = atom
-		logger, err = config.Build()
-	}
-
-	return logger, atom, err
-}
-
 // setupGRPCConnection establishes connection to the server
 func setupGRPCConnection(cfg *config.MinionConfig, logger *zap.Logger) (*grpc.ClientConn, error) {
 	logger, start := logging.FuncLogger(logger, "setupGRPCConnection")
@@ -92,18 +71,9 @@ func setupGRPCConnection(cfg *config.MinionConfig, logger *zap.Logger) (*grpc.Cl
 	return conn, err
 }
 
-// checkVersionFlag checks if version flag was provided and prints version if so
-func checkVersionFlag() bool {
-	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
-		fmt.Printf("Minion %s\n", version.Info())
-		return true
-	}
-	return false
-}
-
 func main() {
 	// Check for version flag
-	if checkVersionFlag() {
+	if version.CheckAndHandleVersionFlag("Minion") {
 		return
 	}
 
@@ -115,7 +85,7 @@ func main() {
 	}
 
 	// Set up logging with atomic level for dynamic log level control
-	logger, atom, err := setupLogger(cfg.Debug)
+	logger, atom, err := logging.SetupLogger(cfg.Debug)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create logger: %v", err))
 	}

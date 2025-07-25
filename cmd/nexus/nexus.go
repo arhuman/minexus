@@ -30,8 +30,7 @@ import (
 
 func main() {
 	// Check for version flag
-	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
-		fmt.Printf("Nexus %s\n", version.Info())
+	if version.CheckAndHandleVersionFlag("Nexus") {
 		return
 	}
 
@@ -43,12 +42,7 @@ func main() {
 	}
 
 	// Set up logging
-	var logger *zap.Logger
-	if cfg.Debug {
-		logger, err = zap.NewDevelopment()
-	} else {
-		logger, err = zap.NewProduction()
-	}
+	logger, _, err := logging.SetupLogger(cfg.Debug)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create logger: %v", err))
 	}

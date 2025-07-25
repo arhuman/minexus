@@ -19,80 +19,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// isSpace reports whether the character is a Unicode white space character.
-// Simplified version of unicode.IsSpace for our needs.
-func isSpace(r rune) bool {
-	return r == ' ' || r == '\t' || r == '\n' || r == '\v' || r == '\f' || r == '\r'
-}
-
-// parseCommandLine parses a command line string respecting shell-style quoting
-// This handles single quotes, double quotes, and escaped characters properly
-func parseCommandLine(line string) ([]string, error) {
-	var args []string
-	var current strings.Builder
-	var inSingleQuote, inDoubleQuote bool
-	var escaped bool
-
-	for _, r := range line {
-		if escaped {
-			// Previous character was a backslash, add this character literally
-			current.WriteRune(r)
-			escaped = false
-			continue
-		}
-
-		switch r {
-		case '\\':
-			// Escape next character (only if not in single quotes)
-			if !inSingleQuote {
-				escaped = true
-				continue
-			}
-			current.WriteRune(r)
-
-		case '\'':
-			if !inDoubleQuote {
-				inSingleQuote = !inSingleQuote
-			} else {
-				current.WriteRune(r)
-			}
-
-		case '"':
-			if !inSingleQuote {
-				inDoubleQuote = !inDoubleQuote
-			} else {
-				current.WriteRune(r)
-			}
-
-		default:
-			if isSpace(r) && !inSingleQuote && !inDoubleQuote {
-				// End of current argument
-				if current.Len() > 0 {
-					args = append(args, current.String())
-					current.Reset()
-				}
-			} else {
-				current.WriteRune(r)
-			}
-		}
-	}
-
-	// Check for unclosed quotes
-	if inSingleQuote {
-		return nil, fmt.Errorf("unclosed single quote")
-	}
-	if inDoubleQuote {
-		return nil, fmt.Errorf("unclosed double quote")
-	}
-
-	// Add final argument if any
-	if current.Len() > 0 {
-		args = append(args, current.String())
-	}
-
-	return args, nil
-}
-
 // CommandStatus tracks the status of a command for each minion
 type CommandStatus struct {
 	CommandID string
@@ -160,7 +86,7 @@ func (c *Console) Start() {
 		}
 
 		// Parse command and arguments with proper shell-style quoting support
-		parts, err := parseCommandLine(line)
+		parts, err := util.ParseCommandLine(line)
 		if err != nil {
 			c.ui.PrintError(fmt.Sprintf("Error parsing command: %v", err))
 			continue
@@ -248,8 +174,8 @@ func (c *Console) listMinions(ctx context.Context) {
 	fmt.Println("------------------------------------ | ----------------- | -------------- | -------- | ---------------- | ----")
 
 	for _, minion := range response.Minions {
-		tags := FormatTags(minion.Tags)
-		lastSeen := FormatLastSeen(minion.LastSeen)
+		tags := util.FormatTags(minion.Tags)
+		lastSeen := util.FormatLastSeen(minion.LastSeen)
 		fmt.Printf("%-36s | %-17s | %-14s | %-8s | %-16s | %s\n",
 			minion.Id, minion.Hostname, minion.Ip, minion.Os, lastSeen, tags)
 	}
@@ -904,26 +830,14 @@ func (c *Console) addToHistory(cmd string) {
 	}
 }
 
-// filterInput filters input runes
-func filterInput(r rune) (rune, bool) {
-	ui := &UIManager{}
-	return ui.filterInput(r)
-}
-
 // isHexString checks if string is hex
 func isHexString(s string) bool {
 	return util.IsHexString(s)
 }
 
-// formatTags formats tags for display
-func formatTags(tags map[string]string) string {
-	return FormatTags(tags)
-}
-
 func main() {
 	// Check for version flag
-	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
-		fmt.Printf("Console %s\n", version.Info())
+	if version.CheckAndHandleVersionFlag("Console") {
 		return
 	}
 
@@ -944,18 +858,7 @@ func main() {
 	}
 
 	// Set up logging
-	var logger *zap.Logger
-	atom := zap.NewAtomicLevelAt(zap.WarnLevel)
-	config := zap.NewProductionConfig()
-	config.Level = atom
-
-	if cfg.Debug {
-		config = zap.NewDevelopmentConfig()
-	} else {
-		config = zap.NewProductionConfig()
-	}
-
-	logger, err = config.Build()
+	logger, _, err := logging.SetupLogger(cfg.Debug)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create logger: %v", err))
 	}
