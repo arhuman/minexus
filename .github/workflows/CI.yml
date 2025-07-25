@@ -44,13 +44,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buf-
 
-      - name: Clean conflicting module cache
-        run: |
-          echo "Cleaning conflicting external module cache for github.com/arhuman/minexus..."
-          rm -rf ~/go/pkg/mod/github.com/arhuman/minexus@v1.1.0
-          rm -rf ~/go/pkg/mod/cache/download/github.com/arhuman/minexus
-          echo "Cache cleaned successfully"
-
       - name: Install dependencies
         run: go mod tidy
 
@@ -61,15 +54,9 @@ jobs:
         run: |
           cp -R internal/certs/files/test/* internal/certs/files
 
-      - name: Build all binaries
-        run: make build
-
-      - name: Run unit tests
-        run: make test
-
       - name: Create test environment file
         run: |
-          cat > .env << EOF
+          cat > .env.test << EOF
           NEXUS_SERVER=nexus_server
           NEXUS_MINION_PORT=11972
           NEXUS_CONSOLE_PORT=11973
@@ -88,6 +75,12 @@ jobs:
           HEARTBEAT_INTERVAL=60
           DEBUG=false
           EOF
+
+      - name: Build all binaries
+        run: make build
+
+      - name: Run unit tests
+        run: make test
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
