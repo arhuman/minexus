@@ -37,7 +37,7 @@ func setupLogger(debug bool) (*zap.Logger, zap.AtomicLevel, error) {
 		config.Level = atom
 		logger, err = config.Build()
 	} else {
-		atom = zap.NewAtomicLevelAt(zap.WarnLevel)
+		atom = zap.NewAtomicLevelAt(zap.InfoLevel)
 		config := zap.NewProductionConfig()
 		config.Level = atom
 		logger, err = config.Build()

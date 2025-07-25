@@ -13,7 +13,7 @@ COVERAGE_HTML="coverage.html"
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 MAX_RETRIES=60
 RETRY_INTERVAL=2
-MINEXUS_ENV="test"
+export MINEXUS_ENV="test"
 NEXUS_MINION_PORT=${NEXUS_MINION_PORT:-11972}
 DB_PORT=5432
 
@@ -97,7 +97,11 @@ load_environment_variables() {
         set +a  # disable automatic export
         log_info "Environment variables loaded successfully"
     else
-        log_warn "Environment file $env_file not found - using defaults"
+        log_error "Environment file $env_file not found!"
+        log_error "Integration tests require proper environment configuration."
+        log_error "Please create $env_file with the required variables."
+        log_error "See docker-compose.yml for the expected configuration."
+        exit 1
     fi
 }
 
@@ -105,7 +109,7 @@ load_environment_variables() {
 setup_docker_services() {
     log_info "Setting up Docker services for integration tests..."
     
-    # Load environment variables first
+    # Load environment variables from .env.test
     load_environment_variables
     
     # Check if services are already running

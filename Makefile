@@ -215,7 +215,8 @@ test:
 	@echo "Copying test certificates..."
 	@cp -R internal/certs/files/test/* internal/certs/files/
 	go run honnef.co/go/tools/cmd/staticcheck@latest -checks=all,-ST1000,-U1000 ./...
-	MINEXUS_ENV=test ./run_tests.sh
+	@echo "Loading test environment variables..."
+	@export MINEXUS_ENV=test && ./run_tests.sh
 
 ## cover: run tests with coverage and display detailed results (set SLOW_TESTS=1 to include integration tests)
 .PHONY: cover

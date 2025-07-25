@@ -19,6 +19,80 @@ import (
 	"go.uber.org/zap"
 )
 
+// isSpace reports whether the character is a Unicode white space character.
+// Simplified version of unicode.IsSpace for our needs.
+func isSpace(r rune) bool {
+	return r == ' ' || r == '\t' || r == '\n' || r == '\v' || r == '\f' || r == '\r'
+}
+
+// parseCommandLine parses a command line string respecting shell-style quoting
+// This handles single quotes, double quotes, and escaped characters properly
+func parseCommandLine(line string) ([]string, error) {
+	var args []string
+	var current strings.Builder
+	var inSingleQuote, inDoubleQuote bool
+	var escaped bool
+
+	for _, r := range line {
+		if escaped {
+			// Previous character was a backslash, add this character literally
+			current.WriteRune(r)
+			escaped = false
+			continue
+		}
+
+		switch r {
+		case '\\':
+			// Escape next character (only if not in single quotes)
+			if !inSingleQuote {
+				escaped = true
+				continue
+			}
+			current.WriteRune(r)
+
+		case '\'':
+			if !inDoubleQuote {
+				inSingleQuote = !inSingleQuote
+			} else {
+				current.WriteRune(r)
+			}
+
+		case '"':
+			if !inSingleQuote {
+				inDoubleQuote = !inDoubleQuote
+			} else {
+				current.WriteRune(r)
+			}
+
+		default:
+			if isSpace(r) && !inSingleQuote && !inDoubleQuote {
+				// End of current argument
+				if current.Len() > 0 {
+					args = append(args, current.String())
+					current.Reset()
+				}
+			} else {
+				current.WriteRune(r)
+			}
+		}
+	}
+
+	// Check for unclosed quotes
+	if inSingleQuote {
+		return nil, fmt.Errorf("unclosed single quote")
+	}
+	if inDoubleQuote {
+		return nil, fmt.Errorf("unclosed double quote")
+	}
+
+	// Add final argument if any
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+
+	return args, nil
+}
+
 // CommandStatus tracks the status of a command for each minion
 type CommandStatus struct {
 	CommandID string
@@ -85,8 +159,12 @@ func (c *Console) Start() {
 			continue
 		}
 
-		// Parse command and arguments
-		parts := strings.Fields(line)
+		// Parse command and arguments with proper shell-style quoting support
+		parts, err := parseCommandLine(line)
+		if err != nil {
+			c.ui.PrintError(fmt.Sprintf("Error parsing command: %v", err))
+			continue
+		}
 		if len(parts) == 0 {
 			continue
 		}
