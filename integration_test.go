@@ -30,11 +30,74 @@ func logDebug(t *testing.T, format string, args ...interface{}) {
 	}
 }
 
+// loadTestEnvironment loads environment variables from .env.test
+func loadTestEnvironment(t *testing.T) {
+	envFile := ".env.test"
+	if _, err := os.Stat(envFile); os.IsNotExist(err) {
+		t.Logf("Warning: %s file not found, using defaults", envFile)
+		return
+	}
+
+	file, err := os.Open(envFile)
+	if err != nil {
+		t.Logf("Warning: Failed to open %s: %v", envFile, err)
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			// Remove quotes if present
+			if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
+				value = value[1 : len(value)-1]
+			}
+			os.Setenv(key, value)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		t.Logf("Warning: Error reading %s: %v", envFile, err)
+	}
+}
+
+// getDBConnectionString builds database connection string from environment variables
+func getDBConnectionString() string {
+	dbUser := os.Getenv("DBUSER")
+	if dbUser == "" {
+		dbUser = "postgres"
+	}
+
+	dbPass := os.Getenv("DBPASS")
+	if dbPass == "" {
+		dbPass = "postgres"
+	}
+
+	dbName := os.Getenv("DBNAME")
+	if dbName == "" {
+		dbName = "minexus"
+	}
+
+	dbPort := os.Getenv("DBPORT")
+	if dbPort == "" {
+		dbPort = "5432"
+	}
+
+	return fmt.Sprintf("postgres://%s:%s@localhost:%s/%s?sslmode=disable", dbUser, dbPass, dbPort, dbName)
+}
+
 // Test configuration
 const (
 	dockerComposeFile = "docker-compose.yml"
 	consoleExecutable = "./console-test"
-	dbConnString      = "postgres://postgres:postgres@localhost:5432/minexus?sslmode=disable"
 	maxRetries        = 15                     // Reduced from 30 (race conditions are fixed)
 	retryInterval     = 500 * time.Millisecond // Reduced from 1s
 	minionPort        = 11972                  // Standard TLS port for minions
@@ -92,6 +155,9 @@ func TestIntegrationSuite(t *testing.T) {
 		t.Skip("Skipping integration tests. Set SLOW_TESTS=1 to run integration tests.")
 		return
 	}
+
+	// Load test environment variables from .env.test
+	loadTestEnvironment(t)
 
 	startTime := time.Now()
 	t.Log("TIMING: Starting integration tests (SLOW_TESTS is set)")
@@ -389,7 +455,7 @@ func waitForServices(t *testing.T) {
 	logDebug(t, "Checking database connectivity...")
 	dbStart := time.Now()
 	for i := 0; i < maxRetries; i++ {
-		db, err := sql.Open("postgres", dbConnString)
+		db, err := sql.Open("postgres", getDBConnectionString())
 		if err == nil {
 			if err := db.Ping(); err == nil {
 				db.Close()
@@ -525,7 +591,10 @@ func runConsoleCommandWithTimeout(command string, timeout time.Duration) (string
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", fmt.Sprintf("echo '%s' | %s --server localhost:11973", command, consoleExecutable))
+	// Pass command directly as stdin to avoid shell quote interpretation issues
+	// This approach handles JSON arguments with unmatched quotes reliably
+	cmd := exec.CommandContext(ctx, consoleExecutable, "--server", "localhost:11973")
+	cmd.Stdin = strings.NewReader(command + "\n")
 
 	// Use explicit --server flag instead of environment variables for reliability
 	// This ensures the console connects to localhost:11973 regardless of .env file settings
@@ -1408,7 +1477,7 @@ func testErrorCases(t *testing.T) {
 
 // testDatabaseIntegrity tests database consistency and integrity
 func testDatabaseIntegrity(t *testing.T) {
-	db, err := sql.Open("postgres", dbConnString)
+	db, err := sql.Open("postgres", getDBConnectionString())
 	require.NoError(t, err, "Should connect to database")
 	defer db.Close()
 
@@ -1463,7 +1532,7 @@ func testDatabaseIntegrity(t *testing.T) {
 
 // verifyCommandInDB verifies that a command was inserted into the commands table
 func verifyCommandInDB(t *testing.T, commandID string) {
-	db, err := sql.Open("postgres", dbConnString)
+	db, err := sql.Open("postgres", getDBConnectionString())
 	require.NoError(t, err, "Should connect to database")
 	defer db.Close()
 
@@ -1475,7 +1544,7 @@ func verifyCommandInDB(t *testing.T, commandID string) {
 
 // getNbResultsInDb returns the actual count of results for a command in the command_results table
 func getNbResultsInDB(t *testing.T, commandID string) int {
-	db, err := sql.Open("postgres", dbConnString)
+	db, err := sql.Open("postgres", getDBConnectionString())
 	require.NoError(t, err, "Should connect to database")
 	defer db.Close()
 

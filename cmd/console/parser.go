@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -118,6 +119,11 @@ func (p *CommandParser) parseCommandAndType(args []string) (string, pb.CommandTy
 		return "", pb.CommandType_SYSTEM
 	}
 
+	// Check if the first argument is a JSON command (even if malformed)
+	if len(args) == 1 && strings.HasPrefix(args[0], "{") {
+		return p.parseJSONCommand(args[0])
+	}
+
 	// Check for explicit command type prefix
 	if len(args) >= 2 {
 		switch args[0] {
@@ -145,10 +151,117 @@ func (p *CommandParser) parseCommandAndType(args []string) (string, pb.CommandTy
 	return fullCmd, pb.CommandType_SYSTEM
 }
 
+// parseJSONCommand parses JSON-formatted commands and converts them to structured format
+func (p *CommandParser) parseJSONCommand(jsonStr string) (string, pb.CommandType) {
+	var jsonCmd map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &jsonCmd); err != nil {
+		// If JSON parsing fails, treat as regular shell command
+		return jsonStr, pb.CommandType_SYSTEM
+	}
+
+	// Extract the command type
+	cmdInterface, exists := jsonCmd["command"]
+	if !exists {
+		// No command field, treat as shell command
+		return jsonStr, pb.CommandType_SYSTEM
+	}
+
+	command, ok := cmdInterface.(string)
+	if !ok {
+		// Command is not a string, treat as shell command
+		return jsonStr, pb.CommandType_SYSTEM
+	}
+
+	// Handle different command types
+	switch command {
+	case "ps", "up", "down", "logs", "build", "pull", "push":
+		// Docker compose commands
+		return p.formatDockerComposeCommand(jsonCmd, command)
+	case "get", "copy", "move", "delete":
+		// File commands
+		return p.formatFileCommand(jsonCmd, command), pb.CommandType_INTERNAL
+	case "info", "os":
+		// System commands
+		return p.formatSystemCommand(jsonCmd, command), pb.CommandType_SYSTEM
+	default:
+		// Unknown command, treat as shell command
+		return jsonStr, pb.CommandType_SYSTEM
+	}
+}
+
+// formatDockerComposeCommand formats Docker Compose JSON commands to structured format
+func (p *CommandParser) formatDockerComposeCommand(jsonCmd map[string]interface{}, command string) (string, pb.CommandType) {
+	var parts []string
+	parts = append(parts, "docker-compose:"+command)
+
+	// Add path if provided
+	if path, exists := jsonCmd["path"]; exists {
+		if pathStr, ok := path.(string); ok {
+			parts = append(parts, pathStr)
+		}
+	}
+
+	// Add service if provided
+	if service, exists := jsonCmd["service"]; exists {
+		if serviceStr, ok := service.(string); ok {
+			parts = append(parts, "--service", serviceStr)
+		}
+	}
+
+	// Add build flag if provided
+	if build, exists := jsonCmd["build"]; exists {
+		if buildBool, ok := build.(bool); ok && buildBool {
+			parts = append(parts, "--build")
+		}
+	}
+
+	// Add detach flag if provided
+	if detach, exists := jsonCmd["detach"]; exists {
+		if detachBool, ok := detach.(bool); ok && detachBool {
+			parts = append(parts, "--detach")
+		}
+	}
+
+	return strings.Join(parts, " "), pb.CommandType_SYSTEM
+}
+
+// formatFileCommand formats file JSON commands to structured format
+func (p *CommandParser) formatFileCommand(jsonCmd map[string]interface{}, command string) string {
+	var parts []string
+	parts = append(parts, "file:"+command)
+
+	// Add path if provided
+	if path, exists := jsonCmd["path"]; exists {
+		if pathStr, ok := path.(string); ok {
+			parts = append(parts, pathStr)
+		}
+	}
+
+	// Add destination for copy/move commands
+	if dest, exists := jsonCmd["dest"]; exists {
+		if destStr, ok := dest.(string); ok {
+			parts = append(parts, destStr)
+		}
+	}
+
+	return strings.Join(parts, " ")
+}
+
+// formatSystemCommand formats system JSON commands to structured format
+func (p *CommandParser) formatSystemCommand(jsonCmd map[string]interface{}, command string) string {
+	return "system:" + command
+}
+
 // validateStructuredCommand validates that structured commands (with ':' prefix) are valid
 func (p *CommandParser) validateStructuredCommand(cmdText string) error {
 	// Allow non-structured commands (no colon) to pass through
 	if !strings.Contains(cmdText, ":") {
+		return nil
+	}
+
+	// Skip validation for JSON commands or other shell commands that contain colons
+	// Only validate actual structured commands that follow the "prefix:subcommand" pattern
+	if strings.HasPrefix(cmdText, "{") || !p.isStructuredCommand(cmdText) {
 		return nil
 	}
 
@@ -219,6 +332,28 @@ func (p *CommandParser) validateStructuredCommand(cmdText string) error {
 	}
 
 	return fmt.Errorf("invalid %s subcommand: %s. Valid subcommands: %v", prefix, actualSubcommand, prefixCommands[prefix])
+}
+
+// isStructuredCommand determines if a command text represents a structured command
+// vs a shell command that happens to contain colons
+func (p *CommandParser) isStructuredCommand(cmdText string) bool {
+	// Get the first part before the colon
+	parts := strings.SplitN(cmdText, ":", 2)
+	if len(parts) != 2 {
+		return false
+	}
+
+	prefix := parts[0]
+
+	// Check if this prefix exists in our registry
+	allCommands := p.registry.GetAllCommands()
+	for cmdName := range allCommands {
+		if strings.HasPrefix(cmdName, prefix+":") {
+			return true
+		}
+	}
+
+	return false
 }
 
 // ShowSendCommandHelp displays help for the command-send syntax
