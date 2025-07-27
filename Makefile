@@ -64,6 +64,8 @@ doc:
 .PHONY: build
 build: certs-prod
 	@echo "Building for detected platform: $(HOST_OS)/$(HOST_ARCH) (production)"
+	cp internal/certs/files/prod/*.crt internal/certs/files/
+	cp internal/certs/files/prod/*.key internal/certs/files/
 	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o nexus ./cmd/nexus/
 	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o minion ./cmd/minion/
 	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o console ./cmd/console/
@@ -221,17 +223,15 @@ run: build
 ## certs-prod: generate production certificates if prod directory is empty
 .PHONY: certs-prod
 certs-prod:
-    
 	@if [ ! -f internal/certs/files/prod/ca.crt ]; then \
-	    MINEXUS_ENV=prod;
-		. .env.prod;
 		echo "Production certificates not found. Generating..."; \
 		chmod +x internal/certs/files/mkcerts.sh; \
-		internal/certs/files/mkcerts.sh $NEXUS_SERVER "/CN=Minexus CA/O=Minexus" internal/certs/files/prod; \
+		export MINEXUS_ENV=prod; \
+		set -a; . ./.env.prod; set +a; \
+		internal/certs/files/mkcerts.sh $$NEXUS_SERVER "/CN=Minexus CA/O=Minexus" internal/certs/files/prod; \
 	else \
 		echo "Production certificates already exist."; \
 	fi
-
 ## test: run tests with coverage (set SLOW_TESTS=1 to include integration tests)
 test:
 	@echo "Copying test certificates..."
