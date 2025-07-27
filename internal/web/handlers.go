@@ -397,11 +397,13 @@ func (ws *WebServer) serveBinaryFile(w http.ResponseWriter, r *http.Request, pat
 		return
 	}
 
-	// For now, return a proper error message for missing binaries
-	// In a production system, this would serve actual pre-built binaries
+	// Construct the binary file path
+	binaryPath := fmt.Sprintf("binaries/%s/%s", component, platform)
+
 	ws.logger.Info("Binary download requested",
 		zap.String("component", component),
 		zap.String("platform", platform),
+		zap.String("path", binaryPath),
 		zap.String("remote_addr", r.RemoteAddr))
 
 	// Set appropriate headers for binary download
@@ -414,9 +416,6 @@ func (ws *WebServer) serveBinaryFile(w http.ResponseWriter, r *http.Request, pat
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
-	// Return informational response since we don't have actual binaries yet
-	// Write status and message manually to preserve Content-Type header
-	w.WriteHeader(http.StatusNotFound)
-	errorMsg := fmt.Sprintf("Binary for %s/%s not available. Pre-built binaries should be placed in binaries/%s/ directory.", component, platform, component)
-	w.Write([]byte(errorMsg))
+	// Serve the file
+	http.ServeFile(w, r, binaryPath)
 }
