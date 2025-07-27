@@ -110,6 +110,44 @@ build_all: build_all_platforms
 #  GOARCH=amd64 GOOS=darwin go build -o ${BINARY_NAME}-darwin main.go
 #  GOARCH=amd64 GOOS=windows go build -o ${BINARY_NAME}-windows main.go
 
+## build-binaries: build binaries for web server downloads (all platforms and architectures)
+.PHONY: build-binaries
+build-binaries: certs-prod
+	@echo "Building binaries for web server downloads..."
+	@mkdir -p binaries/minion binaries/console
+	
+	# Linux AMD64
+	@echo "Building Linux AMD64..."
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=linux go build $(LDFLAGS) -o binaries/minion/linux-amd64 ./cmd/minion/
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=linux go build $(LDFLAGS) -o binaries/console/linux-amd64 ./cmd/console/
+	
+	# Linux ARM64
+	@echo "Building Linux ARM64..."
+	MINEXUS_ENV=prod GOARCH=arm64 GOOS=linux go build $(LDFLAGS) -o binaries/minion/linux-arm64 ./cmd/minion/
+	MINEXUS_ENV=prod GOARCH=arm64 GOOS=linux go build $(LDFLAGS) -o binaries/console/linux-arm64 ./cmd/console/
+	
+	# Windows AMD64
+	@echo "Building Windows AMD64..."
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=windows go build $(LDFLAGS) -o binaries/minion/windows-amd64.exe ./cmd/minion/
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=windows go build $(LDFLAGS) -o binaries/console/windows-amd64.exe ./cmd/console/
+	
+	# Windows ARM64
+	@echo "Building Windows ARM64..."
+	MINEXUS_ENV=prod GOARCH=arm64 GOOS=windows go build $(LDFLAGS) -o binaries/minion/windows-arm64.exe ./cmd/minion/
+	MINEXUS_ENV=prod GOARCH=arm64 GOOS=windows go build $(LDFLAGS) -o binaries/console/windows-arm64.exe ./cmd/console/
+	
+	# macOS AMD64
+	@echo "Building macOS AMD64..."
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=darwin go build $(LDFLAGS) -o binaries/minion/darwin-amd64 ./cmd/minion/
+	MINEXUS_ENV=prod GOARCH=amd64 GOOS=darwin go build $(LDFLAGS) -o binaries/console/darwin-amd64 ./cmd/console/
+	
+	# macOS ARM64
+	@echo "Building macOS ARM64..."
+	MINEXUS_ENV=prod GOARCH=arm64 GOOS=darwin go build $(LDFLAGS) -o binaries/minion/darwin-arm64 ./cmd/minion/
+	MINEXUS_ENV=prod GOARCH=arm64 GOOS=darwin go build $(LDFLAGS) -o binaries/console/darwin-arm64 ./cmd/console/
+	
+	@echo "All platform binaries built successfully in binaries/ directory"
+
 ## clean: clean go artefacts (binary included)
 clean:
 	go clean
@@ -118,6 +156,7 @@ clean:
 	rm -f minion nexus console
 	rm -f minion-* nexus-* console-*
 	rm -f *.exe
+	rm -rf binaries/
 	$(MAKE) certs-clean
 
 ## certs-clean: remove copied certificates from root certs directory
@@ -368,6 +407,9 @@ help:
 	@echo ''
 	@echo 'Certificate Management:'
 	@echo '  make certs-prod          - Generate production certificates if missing'
+	@echo ''
+	@echo 'Binary Distribution:'
+	@echo '  make build-binaries      - Build binaries for all platforms for web server downloads'
 	@echo ''
 	@echo 'Environment Variables:'
 	@echo '  SLOW_TESTS=1             - Include integration tests (requires Docker services)'
