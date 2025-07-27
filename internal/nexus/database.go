@@ -38,11 +38,23 @@ func NewDatabaseService(db *sql.DB, logger *zap.Logger) *DatabaseServiceImpl {
 // StoreHost persists host information to the database.
 func (d *DatabaseServiceImpl) StoreHost(ctx context.Context, hostInfo *pb.HostInfo) error {
 	if d == nil || d.db == nil {
+		// DIAGNOSIS: Log when database service is unavailable
+		if d == nil {
+			fmt.Printf("DIAGNOSIS: DatabaseServiceImpl is nil when trying to store host %s\n", hostInfo.Id)
+		} else if d.db == nil {
+			d.logger.Error("DIAGNOSIS: Database connection is nil when trying to store host",
+				zap.String("host_id", hostInfo.Id))
+		}
 		return fmt.Errorf("database service unavailable - cannot store host %s", hostInfo.Id)
 	}
 
 	logger, start := logging.FuncLogger(d.logger, "DatabaseServiceImpl.StoreHost")
 	defer logging.FuncExit(logger, start)
+
+	logger.Info("DIAGNOSIS: Attempting to store host in database",
+		zap.String("host_id", hostInfo.Id),
+		zap.String("hostname", hostInfo.Hostname),
+		zap.String("ip", hostInfo.Ip))
 
 	// Store in hosts table using simplified schema
 	tagsJSON, err := json.Marshal(hostInfo.Tags)
@@ -210,14 +222,20 @@ func (d *DatabaseServiceImpl) GetCommandResults(ctx context.Context, commandID s
 	}
 
 	// Query database for command results
+	logger.Info("DIAGNOSIS: Executing query for command results",
+		zap.String("command_id", commandID),
+		zap.String("query", "SELECT command_id, minion_id, exit_code, stdout, stderr, EXTRACT(EPOCH FROM timestamp)::bigint FROM command_results WHERE command_id = $1 ORDER BY timestamp ASC"))
+
 	rows, err := d.db.QueryContext(ctx,
 		"SELECT command_id, minion_id, exit_code, stdout, stderr, EXTRACT(EPOCH FROM timestamp)::bigint FROM command_results WHERE command_id = $1 ORDER BY timestamp ASC",
 		commandID)
 	if err != nil {
-		logger.Error("Failed to query command results",
+		logger.Error("DIAGNOSIS: Failed to query command results - database connection failed",
 			zap.String("command_id", commandID),
-			zap.String("query", "SELECT ... FROM command_results WHERE command_id = ..."))
-		return nil, fmt.Errorf("failed to query command results: %v", err)
+			zap.String("query", "SELECT ... FROM command_results WHERE command_id = ..."),
+			zap.String("error_type", fmt.Sprintf("%T", err)),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to query command results: database connection failed")
 	}
 	defer rows.Close()
 
@@ -266,12 +284,18 @@ func (d *DatabaseServiceImpl) updateHostTags(ctx context.Context, minionID strin
 		return fmt.Errorf("failed to marshal tags: %v", err)
 	}
 
+	logger.Info("DIAGNOSIS: Attempting to update host tags in database",
+		zap.String("minion_id", minionID),
+		zap.Any("tags", hostInfo.Tags))
+
 	result, err := d.db.ExecContext(ctx,
 		"UPDATE hosts SET tags=$2 WHERE id=$1",
 		minionID, string(tagsJSON))
 	if err != nil {
-		logger.Error("Failed to update tags in database",
-			zap.String("minion_id", minionID))
+		logger.Error("DIAGNOSIS: Failed to update tags in database - connection or table issue",
+			zap.String("minion_id", minionID),
+			zap.String("error_type", fmt.Sprintf("%T", err)),
+			zap.Error(err))
 		return fmt.Errorf("failed to update tags in database: %v", err)
 	}
 

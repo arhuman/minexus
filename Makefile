@@ -62,11 +62,14 @@ doc:
 
 ## build: build the binary for current platform (production environment)
 .PHONY: build
-build:
+build: certs-prod
 	@echo "Building for detected platform: $(HOST_OS)/$(HOST_ARCH) (production)"
+	cp internal/certs/files/prod/*.crt internal/certs/files/
+	cp internal/certs/files/prod/*.key internal/certs/files/
 	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o nexus ./cmd/nexus/
 	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o minion ./cmd/minion/
 	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o console ./cmd/console/
+	$(MAKE) certs-clean
 	@echo "Build complete"
 
 ## build_darwin: build binaries for macOS (amd64)
@@ -115,6 +118,13 @@ clean:
 	rm -f minion nexus console
 	rm -f minion-* nexus-* console-*
 	rm -f *.exe
+	$(MAKE) certs-clean
+
+## certs-clean: remove copied certificates from root certs directory
+.PHONY: certs-clean
+certs-clean:
+	@echo "Cleaning up certificate files from root certs directory..."
+	@rm -f internal/certs/files/*.crt internal/certs/files/*.key internal/certs/files/*.conf internal/certs/files/*.csr internal/certs/files/*.srl
 
 ## compose_build: docker-compose build
 compose_build:
@@ -138,7 +148,7 @@ local: compose_run
 
 ## build-prod: Build Docker images for the production environment
 .PHONY: build-prod
-build-prod:
+build-prod: certs-prod
 	@echo "Building Docker images for PROD environment..."
 	MINEXUS_ENV=prod docker compose build
 
@@ -150,7 +160,7 @@ build-test:
 
 ## build-prod-local: Build binaries for production environment locally
 .PHONY: build-prod-local
-build-prod-local:
+build-prod-local: certs-prod
 	@echo "Building binaries for PROD environment..."
 	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o nexus-prod ./cmd/nexus/
 	MINEXUS_ENV=prod GOARCH=$(HOST_ARCH) GOOS=$(HOST_OS) go build $(LDFLAGS) -o minion-prod ./cmd/minion/
@@ -210,12 +220,27 @@ release:
 run: build
 	./${BINARY_NAME}
 
+## certs-prod: generate production certificates if prod directory is empty
+.PHONY: certs-prod
+certs-prod:
+	@if [ ! -f internal/certs/files/prod/ca.crt ]; then \
+		echo "Production certificates not found. Generating..."; \
+		chmod +x internal/certs/files/mkcerts.sh; \
+		export MINEXUS_ENV=prod; \
+		set -a; . ./.env.prod; set +a; \
+		internal/certs/files/mkcerts.sh $$NEXUS_SERVER "/CN=Minexus CA/O=Minexus" internal/certs/files/prod; \
+	else \
+		echo "Production certificates already exist."; \
+	fi
 ## test: run tests with coverage (set SLOW_TESTS=1 to include integration tests)
 test:
 	@echo "Copying test certificates..."
 	@cp -R internal/certs/files/test/* internal/certs/files/
 	go run honnef.co/go/tools/cmd/staticcheck@latest -checks=all,-ST1000,-U1000 ./...
-	MINEXUS_ENV=test ./run_tests.sh
+	@echo "Loading test environment variables..."
+	@export MINEXUS_ENV=test && ./run_tests.sh
+	@echo "Cleaning up test certificates..."
+	@$(MAKE) certs-clean
 
 ## cover: run tests with coverage and display detailed results (set SLOW_TESTS=1 to include integration tests)
 .PHONY: cover
@@ -275,6 +300,8 @@ test-integration:
 	@echo "Running integration tests with Docker services..."
 	@cp -R internal/certs/files/test/* internal/certs/files/
 	MINEXUS_ENV=test SLOW_TESTS=1 go test -v ./... -run TestIntegration
+	@echo "Cleaning up test certificates..."
+	@$(MAKE) certs-clean
 
 ## grpc: generate gRPC code
 .PHONY: grpc
@@ -338,6 +365,9 @@ help:
 	@echo '  make stop-test           - Stop test environment'
 	@echo '  make logs-prod           - Follow logs for production environment'
 	@echo '  make logs-test           - Follow logs for test environment'
+	@echo ''
+	@echo 'Certificate Management:'
+	@echo '  make certs-prod          - Generate production certificates if missing'
 	@echo ''
 	@echo 'Environment Variables:'
 	@echo '  SLOW_TESTS=1             - Include integration tests (requires Docker services)'

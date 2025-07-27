@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/arhuman/minexus/internal/command"
+	"github.com/arhuman/minexus/internal/util"
 	pb "github.com/arhuman/minexus/protogen"
 
 	"github.com/chzyer/readline"
@@ -231,7 +232,8 @@ func TestFilterInput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, allowed := filterInput(tt.input)
+			ui := &UIManager{}
+			result, allowed := ui.filterInput(tt.input)
 
 			if result != tt.expected {
 				t.Errorf("Expected rune %v, got %v", tt.expected, result)
@@ -568,7 +570,7 @@ func TestFormatTags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := formatTags(tt.tags)
+			result := util.FormatTags(tt.tags)
 
 			if tt.name == "empty_tags" {
 				if result != tt.expected {
@@ -630,7 +632,7 @@ func TestFormatLastSeen(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := FormatLastSeen(tt.timestamp)
+			result := util.FormatLastSeen(tt.timestamp)
 
 			if !strings.Contains(result, tt.expected) {
 				t.Errorf("Expected result to contain '%s', got '%s'", tt.expected, result)

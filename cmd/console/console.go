@@ -85,8 +85,12 @@ func (c *Console) Start() {
 			continue
 		}
 
-		// Parse command and arguments
-		parts := strings.Fields(line)
+		// Parse command and arguments with proper shell-style quoting support
+		parts, err := util.ParseCommandLine(line)
+		if err != nil {
+			c.ui.PrintError(fmt.Sprintf("Error parsing command: %v", err))
+			continue
+		}
 		if len(parts) == 0 {
 			continue
 		}
@@ -170,8 +174,8 @@ func (c *Console) listMinions(ctx context.Context) {
 	fmt.Println("------------------------------------ | ----------------- | -------------- | -------- | ---------------- | ----")
 
 	for _, minion := range response.Minions {
-		tags := FormatTags(minion.Tags)
-		lastSeen := FormatLastSeen(minion.LastSeen)
+		tags := util.FormatTags(minion.Tags)
+		lastSeen := util.FormatLastSeen(minion.LastSeen)
 		fmt.Printf("%-36s | %-17s | %-14s | %-8s | %-16s | %s\n",
 			minion.Id, minion.Hostname, minion.Ip, minion.Os, lastSeen, tags)
 	}
@@ -826,26 +830,14 @@ func (c *Console) addToHistory(cmd string) {
 	}
 }
 
-// filterInput filters input runes
-func filterInput(r rune) (rune, bool) {
-	ui := &UIManager{}
-	return ui.filterInput(r)
-}
-
 // isHexString checks if string is hex
 func isHexString(s string) bool {
 	return util.IsHexString(s)
 }
 
-// formatTags formats tags for display
-func formatTags(tags map[string]string) string {
-	return FormatTags(tags)
-}
-
 func main() {
 	// Check for version flag
-	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
-		fmt.Printf("Console %s\n", version.Info())
+	if version.CheckAndHandleVersionFlag("Console") {
 		return
 	}
 
@@ -866,18 +858,7 @@ func main() {
 	}
 
 	// Set up logging
-	var logger *zap.Logger
-	atom := zap.NewAtomicLevelAt(zap.WarnLevel)
-	config := zap.NewProductionConfig()
-	config.Level = atom
-
-	if cfg.Debug {
-		config = zap.NewDevelopmentConfig()
-	} else {
-		config = zap.NewProductionConfig()
-	}
-
-	logger, err = config.Build()
+	logger, _, err := logging.SetupLogger(cfg.Debug)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create logger: %v", err))
 	}

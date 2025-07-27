@@ -19,3 +19,22 @@ func FuncLogger(logger *zap.Logger, funcName string) (*zap.Logger, time.Time) {
 func FuncExit(logger *zap.Logger, start time.Time) {
 	logger.With(zap.Duration("elapsed", time.Since(start))).Info("function exited")
 }
+
+// SetupLogger creates a configured logger instance with consistent settings
+// across all Minexus components. Returns logger, atomic level, and error.
+func SetupLogger(debug bool) (*zap.Logger, zap.AtomicLevel, error) {
+	var atom zap.AtomicLevel
+	var config zap.Config
+
+	if debug {
+		atom = zap.NewAtomicLevelAt(zap.DebugLevel)
+		config = zap.NewDevelopmentConfig()
+	} else {
+		atom = zap.NewAtomicLevelAt(zap.InfoLevel)
+		config = zap.NewProductionConfig()
+	}
+
+	config.Level = atom
+	logger, err := config.Build()
+	return logger, atom, err
+}

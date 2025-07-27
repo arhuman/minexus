@@ -54,24 +54,39 @@ func NewServer(dbConnectionString string, logger *zap.Logger) (*Server, error) {
 
 	var dbService DatabaseService
 
+	// DIAGNOSIS: Log database connection attempt details
+	logger.Info("DIAGNOSIS: Database service initialization",
+		zap.String("connection_string_provided", fmt.Sprintf("%t", dbConnectionString != "")),
+		zap.String("connection_string_length", fmt.Sprintf("%d", len(dbConnectionString))))
+
 	// Initialize database connection if needed
 	if dbConnectionString != "" {
+		logger.Info("DIAGNOSIS: Attempting to create database connection",
+			zap.String("connection_string", dbConnectionString))
+
 		db, err := sql.Open("postgres", dbConnectionString)
 		if err != nil {
-			logger.Error("Failed to open database connection",
-				zap.String("connection_string", dbConnectionString))
+			logger.Error("DIAGNOSIS: Failed to create database connection - database service will be nil",
+				zap.String("connection_string", dbConnectionString),
+				zap.Error(err))
 			return nil, err
 		}
 
 		// Test the database connection but don't fail server creation
 		// This allows graceful degradation when database is unavailable
 		if err := db.Ping(); err != nil {
-			logger.Warn("Failed to ping database - database operations may fail",
-				zap.String("connection_string", dbConnectionString))
+			logger.Warn("DIAGNOSIS: Database ping failed - operations will degrade gracefully",
+				zap.String("connection_string", dbConnectionString),
+				zap.Error(err))
 			// Still set the database connection; individual operations will handle errors
+		} else {
+			logger.Info("DIAGNOSIS: Database connection successful")
 		}
 
 		dbService = NewDatabaseService(db, logger)
+		logger.Info("DIAGNOSIS: Database service created successfully")
+	} else {
+		logger.Warn("DIAGNOSIS: No database connection string provided - database service will be nil")
 	}
 
 	// Create minion registry with database service (may be nil)
@@ -90,7 +105,9 @@ func NewServer(dbConnectionString string, logger *zap.Logger) (*Server, error) {
 		commandRegistry: command.SetupCommands(15 * time.Second), // Default timeout for nexus command registry
 	}
 
-	logger.Debug("Server created successfully")
+	// DIAGNOSIS: Log final server state
+	logger.Info("DIAGNOSIS: Server created with database service state",
+		zap.Bool("database_service_available", dbService != nil))
 	return s, nil
 }
 
@@ -524,13 +541,20 @@ func (s *Server) validateCommand(cmd *pb.Command) error {
 	logger, start := logging.FuncLogger(s.logger, "Nexus.validateCommand")
 	defer logging.FuncExit(logger, start)
 
+	// DIAGNOSIS: Log all command validation attempts
 	if cmd == nil {
-		logger.Error("Command is nil")
+		logger.Error("DIAGNOSIS: Command validation failed - command is nil")
 		return fmt.Errorf("command is nil")
 	}
 
+	logger.Info("DIAGNOSIS: Validating command",
+		zap.String("command_id", cmd.Id),
+		zap.String("payload", cmd.Payload),
+		zap.String("type", cmd.Type.String()))
+
 	if cmd.Payload == "" {
-		logger.Error("Command payload is empty")
+		logger.Error("DIAGNOSIS: Command validation failed - payload is empty",
+			zap.String("command_id", cmd.Id))
 		return fmt.Errorf("command payload is empty")
 	}
 
@@ -542,15 +566,27 @@ func (s *Server) validateCommand(cmd *pb.Command) error {
 		if strings.HasPrefix(payload, "system:") || strings.HasPrefix(payload, "file:") {
 			// Extract the command name (everything before the first space or the whole string)
 			cmdName := strings.Fields(payload)[0]
+			logger.Info("DIAGNOSIS: Checking system command in registry",
+				zap.String("command_name", cmdName),
+				zap.String("full_payload", payload))
+
 			if _, exists := s.commandRegistry.GetCommand(cmdName); !exists {
-				logger.Error("Unknown command", zap.String("command", cmdName))
+				logger.Error("DIAGNOSIS: Unknown command - not found in registry",
+					zap.String("command", cmdName),
+					zap.String("full_payload", payload))
 				return fmt.Errorf("unknown command: %s", cmdName)
+			} else {
+				logger.Info("DIAGNOSIS: System command found in registry",
+					zap.String("command_name", cmdName))
 			}
+		} else {
+			logger.Info("DIAGNOSIS: Non-prefixed system command - allowing through",
+				zap.String("payload", payload))
 		}
 		// For other system commands (shell commands), we allow them through
 	}
 
-	logger.Debug("Command validated successfully",
+	logger.Debug("DIAGNOSIS: Command validated successfully",
 		zap.String("command_id", cmd.Id),
 		zap.String("payload", cmd.Payload))
 
