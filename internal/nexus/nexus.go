@@ -259,10 +259,6 @@ func (s *Server) logRegistryState(registry *MinionRegistryImpl, minionID string,
 
 // extractMinionIDs extracts minion IDs from a list of host info
 func (s *Server) extractMinionIDs(hostInfos []*pb.HostInfo) []string {
-	if len(hostInfos) == 0 {
-		return nil
-	}
-	
 	ids := make([]string, 0, len(hostInfos))
 	for _, h := range hostInfos {
 		ids = append(ids, h.Id)
