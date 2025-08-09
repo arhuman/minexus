@@ -97,6 +97,8 @@ minexus/
 │   ├── minion/            #   Minion client implementation
 │   ├── nexus/             #   Nexus server implementation
 │   └── version/           #   Version handling
+├── makefiles/             # Modular Makefile components
+│   └── host_detection.mk  #   Host platform and architecture detection
 ├── proto/                 # Protocol buffer definitions
 ├── protogen/              # Generated protobuf code
 ├── CODE_OF_CONDUCT.md     # Code of Conduct for contributors
@@ -246,8 +248,10 @@ make console                    # Build console REPL (production)
 MINEXUS_ENV=test make build     # Test build
 
 # Environment-specific build targets
-make build-prod-local           # Build production binaries locally
-make build-test-local           # Build test binaries locally
+make build-test                 # Build test environment binaries locally
+
+# Multi-platform builds
+make build_all_platforms        # Build for all platforms and architectures
 
 # Start Nexus server with dual-port architecture (TLS is mandatory, certificates embedded in binary)
 # Port 11972 for minions (standard TLS), Port 11973 for console (mTLS)
@@ -271,25 +275,30 @@ nohup ./minion > minion.log &
 For local development, you can use Docker Compose to launch the complete triad (nexus/minion/console) with a PostgreSQL database:
 
 ```bash
-# Start the full development stack (nexus server + minion + database)
-docker compose up
+# Quick start for local development
+make local                       # Start in test environment
+make compose-run                 # Same as above (default: test environment)
 
-# Start with console for interactive testing
-docker compose --profile console up
+# Production environment
+MINEXUS_ENV=prod make compose-run
+
+# Traditional docker-compose commands still work
+docker compose up                # Start the full development stack
+docker compose --profile console up  # Start with console for interactive testing
 
 # Start only specific services
 docker compose up nexus          # Just nexus and database
 docker compose up nexus minion   # Nexus, minion, and database
 
-# Run in background
-docker compose up -d
+# Background and logs
+docker compose up -d             # Run in background
+make logs-docker                 # View logs (test environment)
+MINEXUS_ENV=prod make logs-docker # View production logs
 
-# View logs
-docker compose logs -f nexus
-docker compose logs -f minion
-
-# Stop all services
-docker compose down
+# Stop services
+make compose-stop                # Stop test environment
+MINEXUS_ENV=prod make compose-stop # Stop production environment
+docker compose down              # Traditional stop
 ```
 
 ### Service Overview
@@ -402,17 +411,19 @@ DBSSLMODE=disable
 The following make targets provide complete lifecycle management for each environment. Each command automatically sets the appropriate `MINEXUS_ENV` value:
 
 ```bash
-# Production Environment (MINEXUS_ENV=prod)
-make run-prod         # Build and run production environment
-make build-prod       # Build Docker images for production
-make stop-prod        # Stop production environment
-make logs-prod        # Follow logs for production environment
+# Docker Compose Management (with environment support)
+make compose-run              # Build and run in specified environment (default: test)
+make compose-build            # Build Docker images for environment (default: test)
+make compose-stop             # Stop services for environment (default: test)
+make local                    # Quick start in test environment (alias for compose-run)
 
-# Test Environment (MINEXUS_ENV=test)
-make run-test         # Build and run test environment
-make build-test       # Build Docker images for test
-make stop-test        # Stop test environment
-make logs-test        # Follow logs for test environment
+# Environment-specific usage
+MINEXUS_ENV=prod make compose-run    # Production environment
+MINEXUS_ENV=test make compose-run    # Test environment (default)
+
+# Logs
+make logs-docker              # Follow logs for environment (default: test)
+MINEXUS_ENV=prod make logs-docker    # Follow production logs
 ```
 
 ### Manual Environment Control
@@ -433,22 +444,23 @@ MINEXUS_ENV=test docker compose up -d
 **Production Deployment:**
 ```bash
 # Deploy to production (builds fresh images, stops existing)
-make run-prod
+MINEXUS_ENV=prod make compose-run
 
 # Monitor production logs
-make logs-prod
+MINEXUS_ENV=prod make logs-docker
 
 # Perform maintenance (stop production)
-make stop-prod
+MINEXUS_ENV=prod make compose-stop
 ```
 
-**Build Management:**
+**Development Workflow:**
 ```bash
-# Build only production images (without running)
-make build-prod
+# Quick local development start
+make local
 
-# Build only test images (without running)
-make build-test
+# Build only for specific environment
+make compose-build              # Test environment
+MINEXUS_ENV=prod make compose-build  # Production environment
 ```
 
 ### Important Notes
@@ -542,19 +554,20 @@ SLOW_TESTS=1 make test
 **Development Workflow (Docker-based):**
 ```bash
 # Use Docker for development - automatically handles environment
-make run-prod          # Uses MINEXUS_ENV=prod, loads .env.prod
-make run-test          # Uses MINEXUS_ENV=test, loads .env.test
+MINEXUS_ENV=prod make compose-run  # Uses MINEXUS_ENV=prod, loads .env.prod
+make compose-run                   # Uses MINEXUS_ENV=test (default), loads .env.test
+make local                         # Quick test environment start
 ```
 
 **Production Deployment (Binary-based):**
 ```bash
 # Build production binaries for deployment
-make build-prod-local  # Creates nexus-prod, minion-prod, console-prod
-# or
-MINEXUS_ENV=prod make build
+make build             # Creates nexus, minion, console (includes -prod suffixes)
+# or for test environment
+make build-test        # Creates nexus-test, minion-test, console-test
 
 # Deploy with production environment
-MINEXUS_ENV=prod ./nexus-prod
+MINEXUS_ENV=prod ./nexus
 ```
 
 **Important Build Notes:**

@@ -330,11 +330,16 @@ func (c *DockerComposeFindCommand) Execute(ctx *ExecutionContext, payload string
 		return c.BaseCommand.CreateSuccessResult(ctx, fmt.Sprintf("No docker-compose.yml files found under: %s", request.Path)), nil
 	}
 
-	output := fmt.Sprintf("Found %d director%s containing docker-compose.yml files under %s:\n\n", 
-		len(foundDirs), 
-		func() string { if len(foundDirs) == 1 { return "y" }; return "ies" }(),
+	output := fmt.Sprintf("Found %d director%s containing docker-compose.yml files under %s:\n\n",
+		len(foundDirs),
+		func() string {
+			if len(foundDirs) == 1 {
+				return "y"
+			}
+			return "ies"
+		}(),
 		request.Path)
-	
+
 	for _, dir := range foundDirs {
 		output += fmt.Sprintf("  %s\n", dir)
 	}
@@ -402,7 +407,7 @@ func (c *DockerComposeViewCommand) Execute(ctx *ExecutionContext, payload string
 
 	// Get the compose file path
 	composeFile := getComposeFile(request.Path)
-	
+
 	// Read the file content
 	content, err := os.ReadFile(composeFile)
 	if err != nil {
