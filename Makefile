@@ -37,8 +37,8 @@ endef
 
 # Phony targets
 .PHONY: audit build build_all build_all_platforms build-binaries build-prod-local build-test
-.PHONY: certs-clean certs-prod clean compose-build compose-run compose-stop console cover cover-ci cover-clean cover-html
-.PHONY: doc grpc help local logs-docker minion nexus release test test-integration tidy confirm
+.PHONY: certs-clean certs-prod clean compose-build compose-run compose-stop confirm console cover cover-ci cover-clean cover-html
+.PHONY: doc grpc help local logs-docker minion nexus release test test-integration tidy
 
 # ==================================================================================== #
 # Makefile Targets (alphabetical order, build first as default)
@@ -88,6 +88,14 @@ build_all_platforms: certs-prod
 ## build-binaries: alias for build_all_platforms (web distribution binaries)
 build-binaries: build_all_platforms
 
+## build-prod-local: alias for build (production binaries with -prod suffix included)
+build-prod-local: build
+
+## build-test: Build binaries for test environment
+build-test:
+	@echo "Building binaries for TEST environment..."
+	$(call build_all_components,test,$(HOST_ARCH),$(HOST_OS),-test)
+
 ## compose-build: Build Docker images for specified environment (default: test)
 compose-build:
 	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
@@ -96,13 +104,21 @@ compose-build:
 	[ "$$MINEXUS_ENV" = "prod" ] && $(MAKE) certs-prod || true; \
 	docker compose build
 
-## build-prod-local: alias for build (production binaries with -prod suffix included)
-build-prod-local: build
+## compose-run: Run application in specified environment (default: test)
+compose-run:
+	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
+	set -a; . ./.env.$$MINEXUS_ENV; set +a; \
+	echo "Starting application in $$MINEXUS_ENV mode..."; \
+	$(MAKE) compose-stop; \
+	$(MAKE) compose-build; \
+	docker compose up -d
 
-## build-test: Build binaries for test environment
-build-test:
-	@echo "Building binaries for TEST environment..."
-	$(call build_all_components,test,$(HOST_ARCH),$(HOST_OS),-test)
+## compose-stop: Stop services for specified environment (default: test)
+compose-stop:
+	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
+	set -a; . ./.env.$$MINEXUS_ENV; set +a; \
+	echo "Stopping $$MINEXUS_ENV environment..."; \
+	docker compose down --remove-orphans
 
 ## certs-clean: remove copied certificates from root certs directory
 certs-clean:
@@ -128,6 +144,9 @@ clean:
 	rm -rf binaries/
 	$(MAKE) certs-clean
 
+## confirm: confirmation prompt
+confirm:
+	@echo -n 'Are you sure? [y/N] ' && read ans && [ $${ans:-N} = y ]
 
 ## console: build console REPL (production environment)
 console:
@@ -239,6 +258,7 @@ local: compose-run
 ## logs-docker: Follow logs for specified environment (default: test)
 logs-docker:
 	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
+	set -a; . ./.env.$$MINEXUS_ENV; set +a; \
 	echo "Following logs for $$MINEXUS_ENV environment..."; \
 	docker compose logs -f
 
@@ -255,21 +275,6 @@ release:
 	SLOW_TESTS=1 $(MAKE) test
 	$(MAKE) build
 	$(MAKE) audit
-
-## compose-run: Run application in specified environment (default: test)
-compose-run:
-	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
-	set -a; . ./.env.$$MINEXUS_ENV; set +a; \
-	echo "Starting application in $$MINEXUS_ENV mode..."; \
-	$(MAKE) compose-stop; \
-	$(MAKE) compose-build; \
-	docker compose up -d
-
-## compose-stop: Stop services for specified environment (default: test)
-compose-stop:
-	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
-	echo "Stopping $$MINEXUS_ENV environment..."; \
-	docker compose down --remove-orphans
 
 ## test: run tests with coverage (set SLOW_TESTS=1 to include integration tests)
 test:
@@ -293,6 +298,3 @@ test-integration:
 tidy:
 	go fmt ./...
 	go mod tidy -v
-
-confirm:
-	@echo -n 'Are you sure? [y/N] ' && read ans && [ $${ans:-N} = y ]

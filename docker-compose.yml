@@ -29,6 +29,8 @@ services:
       context: .
       dockerfile: Dockerfile.nexus
     container_name: nexus_server
+    env_file:
+      - .env.${MINEXUS_ENV:-test}
     restart: always
     environment:
       - MINEXUS_ENV=${MINEXUS_ENV:-test}
@@ -63,6 +65,8 @@ services:
       context: .
       dockerfile: Dockerfile.minion
     container_name: minion
+    env_file:
+      - .env.${MINEXUS_ENV:-test}
     restart: always
     environment:
       - MINEXUS_ENV=${MINEXUS_ENV:-test}
@@ -86,6 +90,8 @@ services:
       context: .
       dockerfile: Dockerfile.console
     container_name: minexus_console
+    env_file:
+      - .env.${MINEXUS_ENV:-test}
     environment:
       - MINEXUS_ENV=${MINEXUS_ENV:-test}
       - DEBUG=${DEBUG:-false}

@@ -14,6 +14,7 @@ COPY internal/ internal/
 # Copy test certificates
 COPY internal/certs/files/test internal/certs/files
 COPY protogen/ protogen/
+COPY .env.${MINEXUS_ENV} ./.env.${MINEXUS_ENV}
 
 # Build the minion binary
 RUN CGO_ENABLED=0 GOOS=linux GOFLAGS="-ldflags=-s -ldflags=-w" go build -o minion ./cmd/minion/
