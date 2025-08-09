@@ -55,10 +55,26 @@ audit:
 	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 	MINEXUS_ENV=test go test -race -buildvcs -vet=off ./...
 
+<<<<<<< Updated upstream
 ## doc: make documentation
 .PHONY: doc
 doc:
 	swag init --parseDependency --parseInternal --parseDepth 2 -g cmd/nexus/nexus.go
+=======
+## build-binaries: alias for build_all_platforms (web distribution binaries)
+build-binaries: build_all_platforms
+
+## build-prod-local: alias for build (production binaries with -prod suffix included)
+build-prod-local: build
+
+## build-test: Build binaries for test environment
+build-test:
+	@echo "Building binaries for TEST environment..."
+	$(call build_all_components,test,$(HOST_ARCH),$(HOST_OS),-test)
+
+## build_all: alias for build_all_platforms
+build_all: build_all_platforms
+>>>>>>> Stashed changes
 
 ## build: build the binary for current platform (production environment)
 .PHONY: build
@@ -131,6 +147,7 @@ build-binaries: certs-prod
 	MINEXUS_ENV=prod GOARCH=amd64 GOOS=windows go build $(LDFLAGS) -o binaries/minion/windows-amd64.exe ./cmd/minion/
 	MINEXUS_ENV=prod GOARCH=amd64 GOOS=windows go build $(LDFLAGS) -o binaries/console/windows-amd64.exe ./cmd/console/
 	
+<<<<<<< Updated upstream
 	# Windows ARM64
 	@echo "Building Windows ARM64..."
 	MINEXUS_ENV=prod GOARCH=arm64 GOOS=windows go build $(LDFLAGS) -o binaries/minion/windows-arm64.exe ./cmd/minion/
@@ -147,6 +164,23 @@ build-binaries: certs-prod
 	MINEXUS_ENV=prod GOARCH=arm64 GOOS=darwin go build $(LDFLAGS) -o binaries/console/darwin-arm64 ./cmd/console/
 	
 	@echo "All platform binaries built successfully in binaries/ directory"
+=======
+	$(MAKE) certs-clean
+	@echo "All platform builds complete (traditional binaries + web distribution binaries in binaries/ directory)"
+
+## certs-clean: remove copied certificates from root certs directory
+certs-clean:
+	@rm -f internal/certs/files/*.{crt,key,conf,csr,srl}
+
+## certs-prod: generate production certificates if needed
+certs-prod:
+	@[ -f internal/certs/files/prod/ca.crt ] || { \
+		echo "Generating production certificates..."; \
+		chmod +x internal/certs/files/mkcerts.sh; \
+		set -a; . ./.env.prod; set +a; \
+		MINEXUS_ENV=prod internal/certs/files/mkcerts.sh $$NEXUS_SERVER "/CN=Minexus CA/O=Minexus" internal/certs/files/prod; \
+	}
+>>>>>>> Stashed changes
 
 ## clean: clean go artefacts (binary included)
 clean:
@@ -159,11 +193,42 @@ clean:
 	rm -rf binaries/
 	$(MAKE) certs-clean
 
+<<<<<<< Updated upstream
 ## certs-clean: remove copied certificates from root certs directory
 .PHONY: certs-clean
 certs-clean:
 	@echo "Cleaning up certificate files from root certs directory..."
 	@rm -f internal/certs/files/*.crt internal/certs/files/*.key internal/certs/files/*.conf internal/certs/files/*.csr internal/certs/files/*.srl
+=======
+## compose-build: Build Docker images for specified environment (default: test)
+# Note: Environment variables are loaded from .env.$ENV to ensure Docker Compose has access to DB credentials
+compose-build:
+	@ENV=$${MINEXUS_ENV:-test}; \
+	set -a; . ./.env.$$ENV; set +a; \
+	echo "Building Docker images for $$ENV environment..."; \
+	[ "$$ENV" = "prod" ] && $(MAKE) certs-prod || true; \
+	MINEXUS_ENV=$$ENV docker compose build
+
+## compose-run: Run application in specified environment (default: test)
+compose-run:
+	@ENV=$${MINEXUS_ENV:-test}; \
+	set -a; . ./.env.$$ENV; set +a; \
+	echo "Starting application in $$ENV mode..."; \
+	$(MAKE) compose-stop MINEXUS_ENV=$$ENV; \
+	$(MAKE) compose-build MINEXUS_ENV=$$ENV; \
+	MINEXUS_ENV=$$ENV docker compose up -d
+
+## compose-stop: Stop services for specified environment (default: test)
+compose-stop:
+	@ENV=$${MINEXUS_ENV:-test}; \
+	set -a; . ./.env.$$ENV; set +a; \
+	echo "Stopping $$ENV environment..."; \
+	MINEXUS_ENV=$$ENV docker compose down --remove-orphans
+
+## confirm: confirm destructive actions
+confirm:
+	@echo -n 'Are you sure? [y/N] ' && read ans && [ $${ans:-N} = y ]
+>>>>>>> Stashed changes
 
 ## compose_build: docker-compose build
 compose_build:
@@ -414,7 +479,56 @@ help:
 	@echo 'Environment Variables:'
 	@echo '  SLOW_TESTS=1             - Include integration tests (requires Docker services)'
 
+<<<<<<< Updated upstream
 .PHONY: confirm
 confirm:
 	@echo -n 'Are you sure? [y/N] ' && read ans && [ $${ans:-N} = y ]
 
+=======
+## local: Run application in test environment (alias for compose-run)
+local: compose-run
+
+## logs-docker: Follow logs for specified environment (default: test)
+logs-docker:
+	@ENV=$${MINEXUS_ENV:-test}; \
+	set -a; . ./.env.$$ENV; set +a; \
+	echo "Following logs for $$ENV environment..."; \
+	MINEXUS_ENV=$$ENV docker compose logs -f
+
+## minion: build minion client (production environment)
+minion:
+	$(call build_binary,prod,$(HOST_ARCH),$(HOST_OS),minion,minion)
+
+## nexus: build nexus server (production environment)
+nexus:
+	$(call build_binary,prod,$(HOST_ARCH),$(HOST_OS),nexus,nexus)
+
+## release: test build and audit current code (includes integration tests)
+release:
+	SLOW_TESTS=1 $(MAKE) test
+	$(MAKE) build
+	$(MAKE) audit
+
+## test: run tests with coverage (set SLOW_TESTS=1 to include integration tests)
+test:
+	@echo "Copying test certificates..."
+	@cp -R internal/certs/files/test/* internal/certs/files/
+	go run honnef.co/go/tools/cmd/staticcheck@latest -checks=all,-ST1000,-U1000 ./...
+	@echo "Loading test environment variables..."
+	@export MINEXUS_ENV=test && ./run_tests.sh
+	@echo "Cleaning up test certificates..."
+	@$(MAKE) certs-clean
+
+## test-integration: run integration tests with Docker services
+test-integration:
+	@echo "Running integration tests with Docker services..."
+	@cp -R internal/certs/files/test/* internal/certs/files/
+	MINEXUS_ENV=test SLOW_TESTS=1 go test -v ./... -run TestIntegration
+	@echo "Cleaning up test certificates..."
+	@$(MAKE) certs-clean
+
+## tidy: format code and tidy modfile
+tidy:
+	go fmt ./...
+	go mod tidy -v
+>>>>>>> Stashed changes
