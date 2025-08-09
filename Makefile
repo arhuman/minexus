@@ -90,11 +90,11 @@ build-binaries: build_all_platforms
 
 ## compose-build: Build Docker images for specified environment (default: test)
 compose-build:
-	@ENV=$${MINEXUS_ENV:-test}; \
-	set -a; . ./.env.$$ENV; set +a; \
-	echo "Building Docker images for $$ENV environment..."; \
-	[ "$$ENV" = "prod" ] && $(MAKE) certs-prod || true; \
-	MINEXUS_ENV=$$ENV docker compose build
+	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
+	set -a; . ./.env.$$MINEXUS_ENV; set +a; \
+	echo "Building Docker images for $$MINEXUS_ENV environment..."; \
+	[ "$$MINEXUS_ENV" = "prod" ] && $(MAKE) certs-prod || true; \
+	docker compose build
 
 ## build-prod-local: alias for build (production binaries with -prod suffix included)
 build-prod-local: build
@@ -238,9 +238,9 @@ local: compose-run
 
 ## logs-docker: Follow logs for specified environment (default: test)
 logs-docker:
-	@ENV=$${MINEXUS_ENV:-test}; \
-	echo "Following logs for $$ENV environment..."; \
-	MINEXUS_ENV=$$ENV docker compose logs -f
+	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
+	echo "Following logs for $$MINEXUS_ENV environment..."; \
+	docker compose logs -f
 
 ## minion: build minion client (production environment)
 minion:
@@ -258,18 +258,18 @@ release:
 
 ## compose-run: Run application in specified environment (default: test)
 compose-run:
-	@ENV=$${MINEXUS_ENV:-test}; \
-	set -a; . ./.env.$$ENV; set +a; \
-	echo "Starting application in $$ENV mode..."; \
-	$(MAKE) compose-stop MINEXUS_ENV=$$ENV; \
-	$(MAKE) compose-build MINEXUS_ENV=$$ENV; \
-	MINEXUS_ENV=$$ENV docker compose up -d
+	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
+	set -a; . ./.env.$$MINEXUS_ENV; set +a; \
+	echo "Starting application in $$MINEXUS_ENV mode..."; \
+	$(MAKE) compose-stop; \
+	$(MAKE) compose-build; \
+	docker compose up -d
 
 ## compose-stop: Stop services for specified environment (default: test)
 compose-stop:
-	@ENV=$${MINEXUS_ENV:-test}; \
-	echo "Stopping $$ENV environment..."; \
-	MINEXUS_ENV=$$ENV docker compose down --remove-orphans
+	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
+	echo "Stopping $$MINEXUS_ENV environment..."; \
+	docker compose down --remove-orphans
 
 ## test: run tests with coverage (set SLOW_TESTS=1 to include integration tests)
 test:
