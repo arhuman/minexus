@@ -91,6 +91,7 @@ build-binaries: build_all_platforms
 ## compose-build: Build Docker images for specified environment (default: test)
 compose-build:
 	@ENV=$${MINEXUS_ENV:-test}; \
+	set -a; . ./.env.$$ENV; set +a; \
 	echo "Building Docker images for $$ENV environment..."; \
 	[ "$$ENV" = "prod" ] && $(MAKE) certs-prod || true; \
 	MINEXUS_ENV=$$ENV docker compose build
@@ -258,6 +259,7 @@ release:
 ## compose-run: Run application in specified environment (default: test)
 compose-run:
 	@ENV=$${MINEXUS_ENV:-test}; \
+	set -a; . ./.env.$$ENV; set +a; \
 	echo "Starting application in $$ENV mode..."; \
 	$(MAKE) compose-stop MINEXUS_ENV=$$ENV; \
 	$(MAKE) compose-build MINEXUS_ENV=$$ENV; \
