@@ -14,7 +14,6 @@ COPY internal/ internal/
 # Copy test certificates
 COPY internal/certs/files/test internal/certs/files
 COPY protogen/ protogen/
-COPY .env.${MINEXUS_ENV} ./.env.${MINEXUS_ENV}
 
 # Build the nexus binary
 RUN CGO_ENABLED=0 GOOS=linux GOFLAGS="-ldflags=-s -ldflags=-w" go build -o nexus ./cmd/nexus/
@@ -38,6 +37,9 @@ RUN groupadd dop && \
 # Set working directory
 RUN mkdir -p /app
 WORKDIR /app
+
+ARG MINEXUS_ENV
+COPY .env.${MINEXUS_ENV} ./.env.${MINEXUS_ENV}
 
 # Copy the binary from builder
 COPY --from=builder /app/nexus /app/nexus
