@@ -66,13 +66,17 @@ So I decided to make this agent (minion) the server (nexus) and start by impleme
 
 ## Quick Start
 
-The system works out-of-the-box with sensible defaults - no configuration required!
+create an .env.prod file
+```cp env.sample .env.prod```
 
-The easiest way to launch one minion, a nexus server and it's associated database is through docker compose:
-`docker compose up -d`
+Modify the .env.prod (DON'T KEEP the default password unchanged...)
 
-Then to attach a console:
-`docker compose exec console /app/console`
+Then launch the nexus
+```MINEXUS_ENV=prod make compose-run```
+
+From now on the hosts where you want to install minion, just
+```curl http://yournexus.address.com:8086/install_minion.sh | sh```
+This will download and run the right minion for your OS/ARCH
 
 ## Project Structure
 
