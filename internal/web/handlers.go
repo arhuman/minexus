@@ -28,11 +28,18 @@ type WebServer struct {
 
 // NewWebServer creates a new web server instance
 func NewWebServer(cfg *config.NexusConfig, nexusServer *nexus.Server, logger *zap.Logger) (*WebServer, error) {
-	// Load templates from file system
+	// Load HTML templates from file system
 	templatesPath := fmt.Sprintf("%s/templates/*.html", cfg.WebRoot)
 	templates, err := template.ParseGlob(templatesPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load web templates from %s: %w", templatesPath, err)
+	}
+
+	// Load shell script templates
+	shellTemplatesPath := fmt.Sprintf("%s/templates/*.sh", cfg.WebRoot)
+	templates, err = templates.ParseGlob(shellTemplatesPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load shell script templates from %s: %w", shellTemplatesPath, err)
 	}
 
 	return &WebServer{
