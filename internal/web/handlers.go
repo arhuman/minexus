@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -106,19 +107,45 @@ func (ws *WebServer) serveDownloadIndex(w http.ResponseWriter, _ *http.Request) 
         <a href="/download/minion/darwin-amd64" class="download-link">macOS x64</a>
         <a href="/download/minion/darwin-arm64" class="download-link">macOS ARM64</a>
     </div>
-    <div class="download-section">
-        <h2>Console Binaries</h2>
-        <a href="/download/console/linux-amd64" class="download-link">Linux x64</a>
-        <a href="/download/console/linux-arm64" class="download-link">Linux ARM64</a>
-        <a href="/download/console/windows-amd64.exe" class="download-link">Windows x64</a>
-        <a href="/download/console/windows-arm64.exe" class="download-link">Windows ARM64</a>
-        <a href="/download/console/darwin-amd64" class="download-link">macOS x64</a>
-        <a href="/download/console/darwin-arm64" class="download-link">macOS ARM64</a>
-    </div>
     <p><a href="/">← Back to Dashboard</a></p>
 </body>
 </html>`
 	w.Write([]byte(html))
+}
+
+// handleInstallScript serves the dynamically generated install script
+func (ws *WebServer) handleInstallScript(w http.ResponseWriter, r *http.Request) {
+	ws.setSecurityHeaders(w)
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Build the base URL using NEXUS_SERVER environment variable
+	nexusServer := os.Getenv("NEXUS_SERVER")
+	if nexusServer == "" {
+		nexusServer = "localhost"
+	}
+	baseURL := fmt.Sprintf("http://%s:%d", nexusServer, ws.config.WebPort)
+
+	// Template data
+	data := struct {
+		BaseURL string
+	}{
+		BaseURL: baseURL,
+	}
+
+	// Set appropriate headers for shell script
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", "inline; filename=install_minion.sh")
+
+	// Execute template
+	if err := ws.templates.ExecuteTemplate(w, "install_minion.sh", data); err != nil {
+		ws.logger.Error("Failed to execute install script template", zap.Error(err))
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 }
 
 // handleAPIStatus serves the /api/status endpoint
@@ -373,12 +400,12 @@ func (ws *WebServer) serveBinaryFile(w http.ResponseWriter, r *http.Request, pat
 		return
 	}
 
-	component := parts[0] // minion or console
+	component := parts[0] // minion
 	platform := parts[1]  // linux-amd64, windows-amd64.exe, etc.
 
 	// Validate component
-	if component != "minion" && component != "console" {
-		http.Error(w, "Invalid component. Must be 'minion' or 'console'", http.StatusBadRequest)
+	if component != "minion" {
+		http.Error(w, "Invalid component. Must be 'minion'", http.StatusBadRequest)
 		return
 	}
 
@@ -405,6 +432,12 @@ func (ws *WebServer) serveBinaryFile(w http.ResponseWriter, r *http.Request, pat
 		zap.String("platform", platform),
 		zap.String("path", binaryPath),
 		zap.String("remote_addr", r.RemoteAddr))
+
+	// Check if file exists before serving
+	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
+		http.Error(w, fmt.Sprintf("Binary for %s/%s not available", component, platform), http.StatusNotFound)
+		return
+	}
 
 	// Set appropriate headers for binary download
 	filename := component

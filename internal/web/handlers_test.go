@@ -256,8 +256,8 @@ func TestHandleDownloadBinary(t *testing.T) {
 		expectedStatus int
 		expectedHeader string
 	}{
-		{"/download/minion/linux-amd64", http.StatusNotFound, "application/octet-stream"},
-		{"/download/console/windows-amd64.exe", http.StatusNotFound, "application/octet-stream"},
+		{"/download/minion/linux-amd64", http.StatusNotFound, ""},
+		{"/download/console/windows-amd64.exe", http.StatusBadRequest, ""},
 		{"/download/invalid/linux-amd64", http.StatusBadRequest, ""},
 		{"/download/minion/invalid-platform", http.StatusBadRequest, ""},
 		{"/download/minion", http.StatusBadRequest, ""},
@@ -299,10 +299,10 @@ func TestServeBinaryFileValidation(t *testing.T) {
 			expectedBody:   "Binary for minion/linux-amd64 not available",
 		},
 		{
-			name:           "Valid console binary",
+			name:           "Invalid console binary",
 			path:           "console/windows-amd64.exe",
-			expectedStatus: http.StatusNotFound,
-			expectedBody:   "Binary for console/windows-amd64.exe not available",
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "Invalid component. Must be 'minion'",
 		},
 		{
 			name:           "Invalid component",

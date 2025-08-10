@@ -37,10 +37,8 @@ func StartWebServer(cfg *config.NexusConfig, nexusServer *nexus.Server, logger *
 	// Binary downloads
 	mux.HandleFunc("/download/", webServer.loggingMiddleware(webServer.handleDownload))
 
-	// Installation script (redirect to static file)
-	mux.HandleFunc("/install_minion.sh", webServer.loggingMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/static/install_minion.sh", http.StatusMovedPermanently)
-	}))
+	// Installation script (dynamically generated)
+	mux.HandleFunc("/install_minion.sh", webServer.loggingMiddleware(webServer.handleInstallScript))
 
 	// API endpoints
 	mux.HandleFunc("/api/status", webServer.loggingMiddleware(webServer.handleAPIStatus))
