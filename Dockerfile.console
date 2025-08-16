@@ -19,20 +19,11 @@ COPY protogen/ protogen/
 RUN CGO_ENABLED=0 GOOS=linux GOFLAGS="-ldflags=-s -ldflags=-w" go build -o console ./cmd/console/
 
 # Runtime stage
-FROM debian:bookworm-slim
-
-ENV TZ=Europe/Zurich
-
-# Add ca-certificates and basic tools needed for interactive console
-RUN apt-get update && apt-get install --no-install-recommends -y \
-    ca-certificates \
-    jq \
-    readline-common \
-    && rm -rf /var/lib/apt/lists/*
+FROM alpine:latest
 
 # Create user and group
-RUN groupadd dop && \
-    useradd -r --uid 1001 -g dop dop
+RUN addgroup -g 1001 dop && \
+    adduser -D -u 1001 -G dop dop
 
 # Set working directory
 RUN mkdir -p /app
@@ -44,8 +35,8 @@ COPY .env.${MINEXUS_ENV} ./.env.${MINEXUS_ENV}
 # Copy the binary from builder
 COPY --from=builder /app/console /app/console
 
-# Create entrypoint script
-RUN echo '#!/bin/sh\n/app/console' > /app/docker-entrypoint.sh && \
+# Create entrypoint script (use printf for proper newlines)
+RUN printf '#!/bin/sh\nexec /app/console\n' > /app/docker-entrypoint.sh && \
     chmod +x /app/docker-entrypoint.sh
 
 # Set ownership for Kubernetes compatibility

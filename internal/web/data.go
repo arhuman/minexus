@@ -14,6 +14,7 @@ type DashboardData struct {
 	MinionPort   int          `json:"minion_port"`
 	ConsolePort  int          `json:"console_port"`
 	WebPort      int          `json:"web_port"`
+	ServerHost   string       `json:"server_host"`
 	Minions      []MinionInfo `json:"minions"`
 }
 

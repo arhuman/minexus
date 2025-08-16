@@ -1,0 +1,85 @@
+{{define "content"}}
+<div class="dashboard">
+    <div class="status-grid">
+        <div class="status-card">
+            <h2>System Status</h2>
+            <div class="status-indicator {{.SystemStatus}}">{{.SystemStatus}}</div>
+            <p>Version: {{.Version}}</p>
+            <p>Uptime: {{.Uptime}}</p>
+        </div>
+
+        <div class="status-card">
+            <h2>Connected Minions</h2>
+            <div class="minion-count">{{.MinionCount}}</div>
+            <div class="minion-list">
+                {{range .Minions}}
+                <div class="minion-item">
+                    <span class="minion-id">{{.ID}}</span>
+                    <span class="minion-status {{.Status}}">{{.Status}}</span>
+                </div>
+                {{end}}
+            </div>
+        </div>
+
+        <div class="status-card">
+            <h2>Server Ports</h2>
+            <div class="port-list">
+                <div class="port-item">
+                    <span>Minion (gRPC): {{.MinionPort}}</span>
+                    <span class="status-dot running"></span>
+                </div>
+                <div class="port-item">
+                    <span>Console (mTLS): {{.ConsolePort}}</span>
+                    <span class="status-dot running"></span>
+                </div>
+                <div class="port-item">
+                    <span>Web (HTTP): {{.WebPort}}</span>
+                    <span class="status-dot running"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="status-card">
+            <h2>Quick Actions</h2>
+            <div class="action-buttons">
+                <a href="/download/" class="btn primary">Download Binaries</a>
+                <a href="/api/status" class="btn secondary">API Status</a>
+                <a href="/api/minions" class="btn secondary">Minions API</a>
+            </div>
+        </div>
+
+        <div class="status-card">
+            <h2>Quick Minion Installation</h2>
+            <p style="margin-bottom: 10px;"><strong>Linux/macOS:</strong></p>
+            <div
+                style="background: #1e1e1e; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 14px; word-break: break-all; position: relative; margin-bottom: 15px;">
+                <code id="install-command-unix"
+                    style="color: #4ec9b0;">curl -sSL http://{{.ServerHost}}:{{.WebPort}}/install_minion.sh | sh</code>
+                <button onclick="copyCommand('install-command-unix')"
+                    style="position: absolute; right: 8px; top: 8px; padding: 4px 8px; background: #007acc; color: white; border: none; border-radius: 3px; cursor: pointer;">Copy</button>
+            </div>
+
+            <p style="margin-bottom: 10px;"><strong>Windows PowerShell:</strong></p>
+            <div
+                style="background: #1e1e1e; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 14px; word-break: break-all; position: relative;">
+                <code id="install-command-windows"
+                    style="color: #4ec9b0;">iwr -useb http://{{.ServerHost}}:{{.WebPort}}/download/minion/windows-amd64.exe -OutFile minion.exe; .\minion.exe</code>
+                <button onclick="copyCommand('install-command-windows')"
+                    style="position: absolute; right: 8px; top: 8px; padding: 4px 8px; background: #007acc; color: white; border: none; border-radius: 3px; cursor: pointer;">Copy</button>
+            </div>
+
+            <p style="margin-top: 10px; font-size: 12px; color: #888;">
+                <strong>Options:</strong><br>
+                • Linux systemd: add <code
+                    style="background: #2d2d30; padding: 2px 4px; border-radius: 2px;">| sh -s -- --systemd</code><br>
+                • Windows with env vars: <code
+                    style="background: #2d2d30; padding: 2px 4px; border-radius: 2px;">$env:NEXUS_SERVER="{{.ServerHost}}"; $env:NEXUS_MINION_PORT="{{.MinionPort}}"; .\minion.exe</code>
+            </p>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script src="/static/js/dashboard.js"></script>
+{{end}}

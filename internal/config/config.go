@@ -1,3 +1,6 @@
+// Package config provides configuration loading and validation for the Minexus application
+// It supports environment-specific configurations, command line flags, and strict validation
+// to ensure correct application behavior across different environments.
 package config
 
 import (
@@ -60,90 +63,28 @@ func (e ValidationError) Error() string {
 	return fmt.Sprintf("configuration validation failed for %s=%s: %s", e.Field, e.Value, e.Message)
 }
 
-// ConfigLoader provides unified configuration loading with priority handling
-type ConfigLoader struct {
+// Loader provides unified configuration loading with priority handling
+type Loader struct {
 	envVars map[string]string
 	logger  *zap.Logger
 }
 
 // NewConfigLoader creates a new configuration loader
-func NewConfigLoader() *ConfigLoader {
-	return &ConfigLoader{
+func NewConfigLoader() *Loader {
+	return &Loader{
 		envVars: make(map[string]string),
 	}
 }
 
 // WithLogger sets the logger for the config loader
-func (cl *ConfigLoader) WithLogger(logger *zap.Logger) *ConfigLoader {
+func (cl *Loader) WithLogger(logger *zap.Logger) *Loader {
 	cl.logger = logger
 	return cl
 }
 
-// LoadEnvFile loads environment variables from .env file (LEGACY - use LoadEnvironmentFile)
-func (cl *ConfigLoader) LoadEnvFile(filename string) error {
-	file, err := os.Open(filename)
-	if err != nil {
-		// File doesn't exist, not an error
-		if cl.logger != nil {
-			cl.logger.Debug("Environment file not found", zap.String("file", filename))
-		}
-		return nil
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		line := strings.TrimSpace(scanner.Text())
-
-		// Skip empty lines and comments
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Parse KEY=VALUE format
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			if cl.logger != nil {
-				cl.logger.Warn("Invalid line in env file",
-					zap.String("file", filename),
-					zap.Int("line", lineNum),
-					zap.String("content", line))
-			}
-			continue
-		}
-
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-
-		// Remove quotes if present
-		if len(value) >= 2 {
-			if (strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`)) ||
-				(strings.HasPrefix(value, `'`) && strings.HasSuffix(value, `'`)) {
-				value = value[1 : len(value)-1]
-			}
-		}
-
-		cl.envVars[key] = value
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading env file %s: %w", filename, err)
-	}
-
-	if cl.logger != nil {
-		cl.logger.Debug("Loaded environment file",
-			zap.String("file", filename),
-			zap.Int("variables", len(cl.envVars)))
-	}
-
-	return nil
-}
-
 // LoadEnvironmentFile loads environment variables from environment-specific file
 // Uses strict validation with no fallback - panics if environment file is missing
-func (cl *ConfigLoader) LoadEnvironmentFile() error {
+func (cl *Loader) LoadEnvironmentFile() error {
 	env := DetectEnvironment() // Panics on invalid environment
 	filename := GetEnvironmentFileName()
 
@@ -208,7 +149,7 @@ func (cl *ConfigLoader) LoadEnvironmentFile() error {
 }
 
 // GetString gets string value with priority: flags → env → file → default
-func (cl *ConfigLoader) GetString(key, defaultValue string) string {
+func (cl *Loader) GetString(key, defaultValue string) string {
 	// Check environment variables first (highest priority after flags)
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -224,7 +165,7 @@ func (cl *ConfigLoader) GetString(key, defaultValue string) string {
 }
 
 // GetInt gets int value with validation
-func (cl *ConfigLoader) GetInt(key string, defaultValue int) (int, error) {
+func (cl *Loader) GetInt(key string, defaultValue int) (int, error) {
 	value := cl.GetString(key, "")
 	if value == "" {
 		return defaultValue, nil
@@ -243,17 +184,17 @@ func (cl *ConfigLoader) GetInt(key string, defaultValue int) (int, error) {
 }
 
 // GetIntInRange gets int value with range validation
-func (cl *ConfigLoader) GetIntInRange(key string, defaultValue, min, max int) (int, error) {
+func (cl *Loader) GetIntInRange(key string, defaultValue, minValue, maxValue int) (int, error) {
 	value, err := cl.GetInt(key, defaultValue)
 	if err != nil {
 		return 0, err
 	}
 
-	if value < min || value > max {
+	if value < minValue || value > maxValue {
 		return 0, ValidationError{
 			Field:   key,
 			Value:   strconv.Itoa(value),
-			Message: fmt.Sprintf("must be between %d and %d", min, max),
+			Message: fmt.Sprintf("must be between %d and %d", minValue, maxValue),
 		}
 	}
 
@@ -261,7 +202,7 @@ func (cl *ConfigLoader) GetIntInRange(key string, defaultValue, min, max int) (i
 }
 
 // GetBool gets bool value with validation
-func (cl *ConfigLoader) GetBool(key string, defaultValue bool) (bool, error) {
+func (cl *Loader) GetBool(key string, defaultValue bool) (bool, error) {
 	value := cl.GetString(key, "")
 	if value == "" {
 		return defaultValue, nil
@@ -280,7 +221,7 @@ func (cl *ConfigLoader) GetBool(key string, defaultValue bool) (bool, error) {
 }
 
 // GetDuration gets duration value with validation
-func (cl *ConfigLoader) GetDuration(key string, defaultValue time.Duration) (time.Duration, error) {
+func (cl *Loader) GetDuration(key string, defaultValue time.Duration) (time.Duration, error) {
 	value := cl.GetString(key, "")
 	if value == "" {
 		return defaultValue, nil
@@ -304,7 +245,7 @@ func (cl *ConfigLoader) GetDuration(key string, defaultValue time.Duration) (tim
 }
 
 // ValidateNetworkAddress validates a network address
-func (cl *ConfigLoader) ValidateNetworkAddress(key, value string) error {
+func (cl *Loader) ValidateNetworkAddress(key, value string) error {
 	if value == "" {
 		return ValidationError{
 			Field:   key,
@@ -344,7 +285,7 @@ func (cl *ConfigLoader) ValidateNetworkAddress(key, value string) error {
 }
 
 // ValidateHostname validates a hostname (without port)
-func (cl *ConfigLoader) ValidateHostname(key, value string) error {
+func (cl *Loader) ValidateHostname(key, value string) error {
 	if value == "" {
 		return ValidationError{
 			Field:   key,
@@ -366,7 +307,7 @@ func (cl *ConfigLoader) ValidateHostname(key, value string) error {
 }
 
 // ValidateRequired ensures a required field is not empty
-func (cl *ConfigLoader) ValidateRequired(key, value string) error {
+func (cl *Loader) ValidateRequired(key, value string) error {
 	if value == "" {
 		return ValidationError{
 			Field:   key,
@@ -378,7 +319,7 @@ func (cl *ConfigLoader) ValidateRequired(key, value string) error {
 }
 
 // ValidateDirectory ensures a directory path is valid
-func (cl *ConfigLoader) ValidateDirectory(key, value string) error {
+func (cl *Loader) ValidateDirectory(key, value string) error {
 	if value == "" {
 		return ValidationError{
 			Field:   key,
@@ -782,7 +723,7 @@ func LoadMinionConfig() (*MinionConfig, error) {
 }
 
 // loadMinionEnvConfig loads configuration from environment variables
-func loadMinionEnvConfig(loader *ConfigLoader, config *MinionConfig, validationErrors *[]error) {
+func loadMinionEnvConfig(loader *Loader, config *MinionConfig, validationErrors *[]error) {
 	// Load and validate server hostname
 	nexusServer := loader.GetString("NEXUS_SERVER", "localhost")
 	if err := loader.ValidateHostname("NEXUS_SERVER", nexusServer); err != nil {
@@ -813,7 +754,7 @@ func loadMinionEnvConfig(loader *ConfigLoader, config *MinionConfig, validationE
 }
 
 // loadMinionTimeouts loads timeout-related configuration from environment variables
-func loadMinionTimeouts(loader *ConfigLoader, config *MinionConfig, validationErrors *[]error) {
+func loadMinionTimeouts(loader *Loader, config *MinionConfig, validationErrors *[]error) {
 	timeoutConfigs := []struct {
 		envVar   string
 		target   *int
@@ -865,7 +806,7 @@ func parseMinionFlags(config *MinionConfig) *minionFlagValues {
 }
 
 // applyMinionFlags applies command line flag values to the configuration
-func applyMinionFlags(loader *ConfigLoader, config *MinionConfig, flags *minionFlagValues, validationErrors *[]error) {
+func applyMinionFlags(loader *Loader, config *MinionConfig, flags *minionFlagValues, validationErrors *[]error) {
 	// Apply and validate server address
 	if err := loader.ValidateNetworkAddress("server", *flags.serverAddr); err != nil {
 		*validationErrors = append(*validationErrors, err)

@@ -19,20 +19,11 @@ COPY protogen/ protogen/
 RUN CGO_ENABLED=0 GOOS=linux GOFLAGS="-ldflags=-s -ldflags=-w" go build -o nexus ./cmd/nexus/
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM alpine:latest
 
-ENV TZ=Europe/Zurich
-
-# Add ca-certificates and basic tools
-RUN apt-get update && apt-get install --no-install-recommends -y \
-    netcat-traditional \
-    ca-certificates \
-    jq \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create user and group
-RUN groupadd dop && \
-    useradd -r --uid 1001 -g dop dop
+# Create user and group (use -G for group assignment in Alpine)
+RUN addgroup -g 1001 dop && \
+    adduser -D -u 1001 -G dop dop
 
 # Set working directory
 RUN mkdir -p /app
@@ -45,10 +36,10 @@ COPY .env.${MINEXUS_ENV} ./.env.${MINEXUS_ENV}
 COPY --from=builder /app/nexus /app/nexus
 
 # Copy webroot directory for web server assets
-COPY webroot/ /app/webroot/
+COPY internal/web/webroot/ /app/webroot/
 
-# Create entrypoint script
-RUN echo '#!/bin/sh\n/app/nexus' > /app/docker-entrypoint.sh && \
+# Create entrypoint script (use printf for proper newlines)
+RUN printf '#!/bin/sh\nexec /app/nexus\n' > /app/docker-entrypoint.sh && \
     chmod +x /app/docker-entrypoint.sh
 
 # Set ownership for Kubernetes compatibility

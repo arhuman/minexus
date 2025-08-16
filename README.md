@@ -66,17 +66,46 @@ So I decided to make this agent (minion) the server (nexus) and start by impleme
 
 ## Quick Start
 
-create an .env.prod file
-```cp env.sample .env.prod```
+### 1. Setup Nexus Server
+
+Create an .env.prod file:
+```bash
+cp env.sample .env.prod
+```
 
 Modify the .env.prod (DON'T KEEP the default password unchanged...)
 
-Then launch the nexus
-```MINEXUS_ENV=prod make compose-run```
+Then launch the nexus:
+```bash
+MINEXUS_ENV=prod make compose-run
+```
 
-From now on the hosts where you want to install minion, just
-```curl http://yournexus.address.com:8086/install_minion.sh | sh```
-This will download and run the right minion for your OS/ARCH
+### 2. Install Minion Clients
+
+Once Nexus is running, visit the web dashboard at `http://yournexus.address.com:8086` to see quick installation commands with copy buttons.
+
+Alternatively, use these commands directly:
+
+**Linux/macOS:**
+```bash
+curl -sSL http://yournexus.address.com:8086/install_minion.sh | sh
+```
+
+**Windows PowerShell:**
+```powershell
+iwr -useb http://yournexus.address.com:8086/download/minion/windows-amd64.exe -OutFile minion.exe; .\minion.exe
+```
+
+**Options:**
+- For systemd installation on Linux: `curl -sSL http://yournexus.address.com:8086/install_minion.sh | sh -s -- --systemd`
+- For Windows with custom environment variables:
+  ```powershell
+  $env:NEXUS_SERVER="yournexus.address.com"
+  $env:NEXUS_MINION_PORT="11972"
+  .\minion.exe
+  ```
+
+The installation script automatically detects your OS and architecture, downloading the appropriate minion binary.
 
 ## Project Structure
 
