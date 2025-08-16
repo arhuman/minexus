@@ -99,26 +99,29 @@ build-test:
 ## compose-build: Build Docker images for specified environment (default: test)
 compose-build:
 	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
-	set -a; . ./.env.$$MINEXUS_ENV; set +a; \
 	echo "Building Docker images for $$MINEXUS_ENV environment..."; \
 	[ "$$MINEXUS_ENV" = "prod" ] && $(MAKE) certs-prod || true; \
-	docker compose build
+	docker compose --env-file .env.$$MINEXUS_ENV build
 
 ## compose-run: Run application in specified environment (default: test)
 compose-run:
 	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
-	set -a; . ./.env.$$MINEXUS_ENV; set +a; \
 	echo "Starting application in $$MINEXUS_ENV mode..."; \
 	$(MAKE) compose-stop; \
 	$(MAKE) compose-build; \
-	docker compose up -d
+	docker compose --env-file .env.$$MINEXUS_ENV up -d
 
 ## compose-stop: Stop services for specified environment (default: test)
 compose-stop:
 	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
-	set -a; . ./.env.$$MINEXUS_ENV; set +a; \
 	echo "Stopping $$MINEXUS_ENV environment..."; \
-	docker compose down --remove-orphans
+	docker compose --env-file .env.$$MINEXUS_ENV down --remove-orphans
+
+## compose-up: Start services without rebuilding for specified environment (default: test)
+compose-up:
+	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
+	echo "Starting $$MINEXUS_ENV environment without rebuild..."; \
+	docker compose --env-file .env.$$MINEXUS_ENV up
 
 ## certs-clean: remove copied certificates from root certs directory
 certs-clean:
@@ -258,9 +261,8 @@ local: compose-run
 ## logs-docker: Follow logs for specified environment (default: test)
 logs-docker:
 	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
-	set -a; . ./.env.$$MINEXUS_ENV; set +a; \
 	echo "Following logs for $$MINEXUS_ENV environment..."; \
-	docker compose logs -f
+	docker compose --env-file .env.$$MINEXUS_ENV logs -f
 
 ## minion: build minion client (production environment)
 minion:

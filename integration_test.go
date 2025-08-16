@@ -123,7 +123,7 @@ const (
 //
 // Required Services:
 //   - nexus_db: PostgreSQL database
-//   - nexus_server: Nexus gRPC dual-port server (port 11972 for minions, 11973 for console)
+//   - nexus: Nexus gRPC dual-port server (port 11972 for minions, 11973 for console)
 //   - minion_1: Test minion client
 //
 // Test Categories:
@@ -385,7 +385,7 @@ func setupDockerServices(t *testing.T) {
 	parseDuration := time.Since(parseStart)
 	t.Logf("TIMING: Docker status parsing took %v", parseDuration)
 
-	requiredServices := []string{"nexus_db", "nexus_server", "minion"}
+	requiredServices := []string{"nexus_db", "nexus", "minion"}
 	missingServices := []string{}
 
 	for _, service := range requiredServices {
@@ -399,7 +399,7 @@ func setupDockerServices(t *testing.T) {
 
 		// Start services
 		serviceStartStart := time.Now()
-		cmd = exec.Command("docker", "compose", "up", "-d", "nexus_server", "minion")
+		cmd = exec.Command("docker", "compose", "up", "-d", "nexus", "minion")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
@@ -432,9 +432,9 @@ func parseDockerComposePS(output string) map[string]string {
 				services["nexus_db"] = "running"
 			}
 		}
-		if strings.Contains(line, "nexus_server") {
+		if strings.Contains(line, "nexus") {
 			if strings.Contains(line, "running") {
-				services["nexus_server"] = "running"
+				services["nexus"] = "running"
 			}
 		}
 		if strings.Contains(line, "minion") {
@@ -2128,7 +2128,7 @@ func waitForCommandCompletion(t *testing.T, commandID string, maxAttempts int, s
 
 // executeNexusRestart executes the nexus server restart command
 func executeNexusRestart() error {
-	restartCmd := exec.Command("docker", "compose", "restart", "nexus_server")
+	restartCmd := exec.Command("docker", "compose", "restart", "nexus")
 	restartCmd.Stdout = os.Stdout
 	restartCmd.Stderr = os.Stderr
 	return restartCmd.Run()

@@ -247,6 +247,12 @@ func (ws *WebServer) buildDashboardData() DashboardData {
 		systemStatus = "warning"
 	}
 
+	// Get server host from environment variable or use default
+	serverHost := os.Getenv("NEXUS_SERVER")
+	if serverHost == "" {
+		serverHost = "localhost"
+	}
+
 	return DashboardData{
 		Title:        "Dashboard",
 		Version:      version.Component("Nexus"),
@@ -256,6 +262,7 @@ func (ws *WebServer) buildDashboardData() DashboardData {
 		MinionPort:   ws.config.MinionPort,
 		ConsolePort:  ws.config.ConsolePort,
 		WebPort:      ws.config.WebPort,
+		ServerHost:   serverHost,
 		Minions:      minions,
 	}
 }

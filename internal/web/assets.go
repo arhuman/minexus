@@ -9,22 +9,22 @@ import (
 // Embedded webroot assets - included at build time
 var (
 	// HTML Templates
-	//go:embed templates/*.html
+	//go:embed webroot/templates/*.html
 	templatesFS embed.FS
 
 	// Static assets (CSS, JS, images)
-	//go:embed static/*
+	//go:embed webroot/static/*
 	staticFS embed.FS
 )
 
 // GetTemplates loads and parses embedded HTML templates
 func GetTemplates() (*template.Template, error) {
-	return template.ParseFS(templatesFS, "templates/*.html")
+	return template.ParseFS(templatesFS, "webroot/templates/*.html")
 }
 
 // GetStaticFS returns the embedded static file system
 func GetStaticFS() fs.FS {
-	staticSubFS, err := fs.Sub(staticFS, "static")
+	staticSubFS, err := fs.Sub(staticFS, "webroot/static")
 	if err != nil {
 		panic("failed to create static subdirectory: " + err.Error())
 	}

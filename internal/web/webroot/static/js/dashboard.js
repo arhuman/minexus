@@ -317,4 +317,50 @@ document.addEventListener('DOMContentLoaded', function () {
         showError('Connection lost');
         stopAutoRefresh();
     });
+    // Copy installation command to clipboard
+    function copyCommand(elementId) {
+        // Support both old and new usage
+        const id = elementId || 'install-command';
+        const commandElement = document.getElementById(id);
+        if (!commandElement) return;
+
+        const command = commandElement.textContent;
+
+        // Try modern clipboard API first
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(command)
+                .then(() => {
+                    showSuccess('Command copied to clipboard!');
+                })
+                .catch(() => {
+                    fallbackCopy(command);
+                });
+        } else {
+            // Fallback for older browsers
+            fallbackCopy(command);
+        }
+    }
+
+    function fallbackCopy(text) {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+            document.execCommand('copy');
+            showSuccess('Command copied to clipboard!');
+        } catch (err) {
+            showError('Failed to copy command');
+        }
+
+        document.body.removeChild(textArea);
+    }
+
+    // Make copyCommand globally accessible
+    window.copyCommand = copyCommand;
 });
