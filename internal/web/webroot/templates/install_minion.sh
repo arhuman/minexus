@@ -17,7 +17,9 @@ echo "Minion ID: $MINION_ID"
 
 # Download and install minion binary
 echo "Downloading minion binary..."
-curl -o minion "http://$NEXUS_SERVER:{{.WebPort}}/binaries/minion/$(uname -s)-$(uname -m)" || {
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+curl -o minion "http://$NEXUS_SERVER:{{.WebPort}}/download/minion/${OS}-${ARCH}" || {
     echo "Failed to download minion binary"
     exit 1
 }
