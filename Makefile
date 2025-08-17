@@ -69,6 +69,8 @@ build_all: build_all_platforms
 build_all_platforms: certs-prod
 	@echo "Building for all platforms and architectures..."
 	@mkdir -p binaries/minion binaries/console
+	cp internal/certs/files/prod/*.crt internal/certs/files/
+	cp internal/certs/files/prod/*.key internal/certs/files/
 	
 	# Linux builds
 	$(call build_platform,linux,amd64,-linux,yes,)
