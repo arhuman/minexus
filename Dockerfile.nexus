@@ -38,6 +38,9 @@ COPY --from=builder /app/nexus /app/nexus
 # Copy webroot directory for web server assets
 COPY internal/web/webroot/ /app/webroot/
 
+# Copy minion binaries for download service
+COPY binaries/ /app/binaries/
+
 # Create entrypoint script (use printf for proper newlines)
 RUN printf '#!/bin/sh\nexec /app/nexus\n' > /app/docker-entrypoint.sh && \
     chmod +x /app/docker-entrypoint.sh
