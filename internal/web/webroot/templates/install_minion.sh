@@ -19,7 +19,50 @@ echo "Minion ID: $MINION_ID"
 echo "Downloading minion binary..."
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
-curl -o minion "http://$NEXUS_SERVER:{{.WebPort}}/download/minion/${OS}-${ARCH}" || {
+
+# Map architecture names to expected format
+case "$ARCH" in
+    x86_64)
+        ARCH="amd64"
+        ;;
+    aarch64)
+        ARCH="arm64"
+        ;;
+    armv7l|armv7)
+        echo "Error: 32-bit ARM is not supported"
+        exit 1
+        ;;
+    *)
+        echo "Error: Unsupported architecture: $ARCH"
+        exit 1
+        ;;
+esac
+
+# Handle special cases for OS names
+case "$OS" in
+    darwin)
+        # macOS is already correct
+        ;;
+    linux)
+        # Linux is already correct
+        ;;
+    mingw*|msys*|cygwin*)
+        OS="windows"
+        PLATFORM="${OS}-${ARCH}.exe"
+        ;;
+    *)
+        echo "Error: Unsupported operating system: $OS"
+        exit 1
+        ;;
+esac
+
+# Build platform string
+if [ -z "$PLATFORM" ]; then
+    PLATFORM="${OS}-${ARCH}"
+fi
+
+echo "Detected platform: $PLATFORM"
+curl -o minion "http://$NEXUS_SERVER:{{.WebPort}}/download/minion/${PLATFORM}" || {
     echo "Failed to download minion binary"
     exit 1
 }
