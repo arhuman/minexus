@@ -103,6 +103,10 @@ compose-build:
 	@export MINEXUS_ENV=$${MINEXUS_ENV:-test}; \
 	echo "Building Docker images for $$MINEXUS_ENV environment..."; \
 	[ "$$MINEXUS_ENV" = "prod" ] && $(MAKE) certs-prod || true; \
+	if [ ! -d "binaries" ] || [ -z "$$(ls -A binaries 2>/dev/null)" ]; then \
+		echo "Binaries directory missing or empty, building binaries for all platforms..."; \
+		$(MAKE) build-binaries; \
+	fi; \
 	docker compose --env-file .env.$$MINEXUS_ENV build
 
 ## compose-run: Run application in specified environment (default: test)
