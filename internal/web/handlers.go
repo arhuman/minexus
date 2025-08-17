@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	texttemplate "text/template"
 	"time"
 
 	"github.com/arhuman/minexus/internal/config"
@@ -19,11 +20,12 @@ import (
 
 // WebServer represents the HTTP web server
 type WebServer struct {
-	config    *config.NexusConfig
-	nexus     *nexus.Server
-	templates *template.Template
-	logger    *zap.Logger
-	startTime time.Time
+	config         *config.NexusConfig
+	nexus          *nexus.Server
+	templates      *template.Template
+	shellTemplates *texttemplate.Template
+	logger         *zap.Logger
+	startTime      time.Time
 }
 
 // NewWebServer creates a new web server instance
@@ -35,19 +37,20 @@ func NewWebServer(cfg *config.NexusConfig, nexusServer *nexus.Server, logger *za
 		return nil, fmt.Errorf("failed to load web templates from %s: %w", templatesPath, err)
 	}
 
-	// Load shell script templates
+	// Load shell script templates using text/template (not html/template)
 	shellTemplatesPath := fmt.Sprintf("%s/templates/*.sh", cfg.WebRoot)
-	templates, err = templates.ParseGlob(shellTemplatesPath)
+	shellTemplates, err := texttemplate.ParseGlob(shellTemplatesPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load shell script templates from %s: %w", shellTemplatesPath, err)
 	}
 
 	return &WebServer{
-		config:    cfg,
-		nexus:     nexusServer,
-		templates: templates,
-		logger:    logger,
-		startTime: time.Now(),
+		config:         cfg,
+		nexus:          nexusServer,
+		templates:      templates,
+		shellTemplates: shellTemplates,
+		logger:         logger,
+		startTime:      time.Now(),
 	}, nil
 }
 
@@ -129,30 +132,51 @@ func (ws *WebServer) handleInstallScript(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Build the base URL using NEXUS_SERVER environment variable
+	// Build the server URL using NEXUS_SERVER environment variable
 	nexusServer := os.Getenv("NEXUS_SERVER")
 	if nexusServer == "" {
 		nexusServer = "localhost"
 	}
-	baseURL := fmt.Sprintf("http://%s:%d", nexusServer, ws.config.WebPort)
 
-	// Template data
+	// Template data matching what the script expects
 	data := struct {
-		BaseURL string
+		Date       string
+		ServerURL  string
+		MinionPort int
+		MinionID   string
+		WebPort    int
 	}{
-		BaseURL: baseURL,
+		Date:       time.Now().Format("2006-01-02 15:04:05"),
+		ServerURL:  nexusServer,
+		MinionPort: ws.config.MinionPort,
+		MinionID:   fmt.Sprintf("minion-%d", time.Now().Unix()),
+		WebPort:    ws.config.WebPort,
 	}
 
 	// Set appropriate headers for shell script
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", "inline; filename=install_minion.sh")
 
-	// Execute template
-	if err := ws.templates.ExecuteTemplate(w, "install_minion.sh", data); err != nil {
-		ws.logger.Error("Failed to execute install script template", zap.Error(err))
+	// Log diagnostic information
+	ws.logger.Info("Attempting to execute install script template",
+		zap.String("template_name", "install_minion.sh"),
+		zap.String("server_url", nexusServer),
+		zap.Int("minion_port", ws.config.MinionPort),
+		zap.Int("web_port", ws.config.WebPort),
+		zap.String("location", "main"))
+
+	// Execute shell template (using text/template, not html/template)
+	if err := ws.shellTemplates.ExecuteTemplate(w, "install_minion.sh", data); err != nil {
+		ws.logger.Error("Failed to execute install script template",
+			zap.String("location", "main"),
+			zap.Error(err))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+
+	ws.logger.Info("Successfully executed install script template",
+		zap.String("template_name", "install_minion.sh"),
+		zap.String("location", "main"))
 }
 
 // handleAPIStatus serves the /api/status endpoint

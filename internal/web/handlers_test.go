@@ -6,9 +6,11 @@ import (
 	"html/template"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	texttemplate "text/template"
 	"time"
 
 	"github.com/arhuman/minexus/internal/config"
@@ -34,12 +36,54 @@ func createTestWebServer() *WebServer {
 		templates, _ = GetTemplates()
 	}
 
+	// Create shell script templates
+	shellTemplatesPath := filepath.Join(cfg.WebRoot, "templates", "*.sh")
+	shellTemplates, err := texttemplate.ParseGlob(shellTemplatesPath)
+	if err != nil || shellTemplates == nil || shellTemplates.Lookup("install_minion.sh") == nil {
+		// Create a minimal test template if webroot doesn't exist or template not found
+		shellTemplates = texttemplate.New("install_minion.sh")
+		shellTemplates.Parse(`#!/bin/bash
+# Minion Installation Script
+# Generated on: {{.Date}}
+# Server: {{.ServerURL}}
+
+set -e
+
+# Configuration
+NEXUS_SERVER="{{.ServerURL}}"
+MINION_PORT="{{.MinionPort}}"
+MINION_ID="${MINION_ID:-{{.MinionID}}}"
+
+echo "Installing Minion client..."
+echo "Nexus Server: $NEXUS_SERVER"
+echo "Minion Port: $MINION_PORT"
+echo "Minion ID: $MINION_ID"
+
+# Download and install minion binary
+echo "Downloading minion binary..."
+curl -o minion "http://$NEXUS_SERVER:{{.WebPort}}/binaries/minion/$(uname -s)-$(uname -m)" || {
+	   echo "Failed to download minion binary"
+	   exit 1
+}
+
+chmod +x minion
+
+# Create systemd service or run directly
+if [ "$1" = "--systemd" ]; then
+	   echo "Minion installed as systemd service"
+else
+	   echo "Starting minion..."
+	   NEXUS_SERVER="$NEXUS_SERVER" NEXUS_MINION_PORT="$MINION_PORT" MINION_ID="$MINION_ID" ./minion
+fi`)
+	}
+
 	return &WebServer{
-		config:    cfg,
-		nexus:     nil, // We'll test without a real nexus server
-		templates: templates,
-		logger:    logger,
-		startTime: time.Now(),
+		config:         cfg,
+		nexus:          nil, // We'll test without a real nexus server
+		templates:      templates,
+		shellTemplates: shellTemplates,
+		logger:         logger,
+		startTime:      time.Now(),
 	}
 }
 
@@ -622,5 +666,111 @@ func TestWebServerIntegration(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Download index: expected status 200, got %d", resp.StatusCode)
+	}
+}
+
+// TestHandleInstallScript tests that the install script endpoint works correctly
+// and uses text/template (not html/template) to avoid parsing errors
+func TestHandleInstallScript(t *testing.T) {
+	webServer := createTestWebServer()
+
+	// Test GET request
+	req := httptest.NewRequest(http.MethodGet, "/install_minion.sh", nil)
+	w := httptest.NewRecorder()
+
+	webServer.handleInstallScript(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Check content type is text/plain (not HTML)
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(contentType, "text/plain") {
+		t.Errorf("Expected text/plain content type, got %s", contentType)
+	}
+
+	// Check content disposition
+	contentDisposition := resp.Header.Get("Content-Disposition")
+	if !strings.Contains(contentDisposition, "install_minion.sh") {
+		t.Errorf("Expected Content-Disposition to contain 'install_minion.sh', got %s", contentDisposition)
+	}
+
+	body := w.Body.String()
+
+	// Verify the script contains expected content
+	expectedContent := []string{
+		"#!/bin/bash",
+		"Minion Installation Script",
+		"Server:",         // Template variable should be replaced
+		"Minion Port:",    // Template variable should be replaced
+		"systemd service", // This would fail with html/template due to quotes
+	}
+
+	for _, expected := range expectedContent {
+		if !strings.Contains(body, expected) {
+			t.Errorf("Expected script to contain '%s', but it was missing", expected)
+		}
+	}
+
+	// Verify no HTML escaping happened (which would occur with html/template)
+	// Check that quotes are not escaped
+	if strings.Contains(body, "&quot;") || strings.Contains(body, "&#34;") {
+		t.Error("Found HTML-escaped quotes in shell script, should use text/template not html/template")
+	}
+
+	// Check that angle brackets are not escaped (if any were in the template)
+	if strings.Contains(body, "&lt;") || strings.Contains(body, "&gt;") {
+		t.Error("Found HTML-escaped angle brackets in shell script, should use text/template not html/template")
+	}
+}
+
+// TestHandleInstallScriptMethodNotAllowed tests non-GET requests to install script
+func TestHandleInstallScriptMethodNotAllowed(t *testing.T) {
+	webServer := createTestWebServer()
+
+	methods := []string{http.MethodPost, http.MethodPut, http.MethodDelete}
+	for _, method := range methods {
+		req := httptest.NewRequest(method, "/install_minion.sh", nil)
+		w := httptest.NewRecorder()
+
+		webServer.handleInstallScript(w, req)
+
+		resp := w.Result()
+		if resp.StatusCode != http.StatusMethodNotAllowed {
+			t.Errorf("Method %s: expected status 405, got %d", method, resp.StatusCode)
+		}
+	}
+}
+
+// TestInstallScriptTemplateExecution verifies template variable substitution works
+func TestInstallScriptTemplateExecution(t *testing.T) {
+	webServer := createTestWebServer()
+
+	// Set a specific NEXUS_SERVER environment variable for testing
+	originalNexusServer := os.Getenv("NEXUS_SERVER")
+	os.Setenv("NEXUS_SERVER", "test.nexus.local")
+	defer os.Setenv("NEXUS_SERVER", originalNexusServer)
+
+	req := httptest.NewRequest(http.MethodGet, "/install_minion.sh", nil)
+	w := httptest.NewRecorder()
+
+	webServer.handleInstallScript(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body := w.Body.String()
+
+	// Verify template variables were replaced
+	if !strings.Contains(body, "test.nexus.local") {
+		t.Error("Expected ServerURL 'test.nexus.local' to be in the output")
+	}
+
+	if !strings.Contains(body, "11972") {
+		t.Error("Expected MinionPort '11972' to be in the output")
 	}
 }
