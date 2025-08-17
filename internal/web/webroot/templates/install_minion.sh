@@ -51,3 +51,5 @@ else
     echo "Starting minion..."
     NEXUS_SERVER="$NEXUS_SERVER" NEXUS_MINION_PORT="$MINION_PORT" MINION_ID="$MINION_ID" ./minion
 fi
+
+
