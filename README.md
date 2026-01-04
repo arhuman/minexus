@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 Minexus is a Remote Administration Tool (RAT) first used as a faster alternative to ansible.
-It's made of a central Nexus server, (multiple) Minion clients(s), and a Console client for administration..
+It consists of a central Nexus server, one or more Minion clients, and a Console client for administration.
 You can use it:
 * for remote deployment/execution tool (like ansible)
 * for monitoring purpose
