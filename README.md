@@ -9,10 +9,10 @@ It consists of a central Nexus server, one or more Minion clients, and a Console
 You can use it:
 * for remote deployment/execution tool (like ansible)
 * for monitoring purpose
-* for security purpose
+* for security reasons
 * ... (tell us!)
 
-Exemple of currently implemented commands:
+Example of currently implemented commands:
 Tag Management:
 
 * tag-set \<minion-id\> \<key\>=\<value\> \[...\]    - Set tags for a minion (replaces all)
@@ -51,17 +51,17 @@ It's current features include:
 - **Flexible Configuration**: Multiple configuration methods
 - **Database Persistence**: Command history and minion registry
 
-We focus on modularity and extensibility to make it easy to add new commands.
+We have focused on modularity and extensibility to make it easy to add new commands.
 (more info in [adding_commands.md](documentation/adding_commands.md))
 
 ## Why Minexus
 
 Although I was very satisfied with ansible for deployment, I found it not practical for remote admistration and monitoring:
-- Ansible is to slow
-- Ansible multiple outpout handling is not convenient
+- Ansible is too slow
+- Ansible multiple output handling is not convenient
 - Poor monitoring (No state management) requiring the use of other tools (telegraf/grafana...)
 
-Plus I was planning to make a security agent for other needs.
+Plus, I was planning to make a security agent for other needs.
 So I decided to make this agent (minion) the server (nexus) and start by implementing the basic architecture for remote administration and then add incrementally new features, so that minexus could cover both my administration, monitoring and security needs.
 
 ## Quick Start
