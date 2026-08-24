@@ -685,3 +685,7 @@ This project is licensed under the terms of the [MIT License](LICENSE).
 ## Support
 
 For issues and questions, please use the issue tracker.
+
+## Lint and formatting
+
+CI enforces `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` using the workspace configuration. Run both locally before opening a PR.
